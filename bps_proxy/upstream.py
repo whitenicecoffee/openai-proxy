@@ -13,7 +13,7 @@ from typing import Iterator
 from urllib import error, request
 
 from bps_proxy.auth import ChatGPTSession
-from bps_proxy.network import open_url
+from bps_proxy.network import description as network_description, open_url
 from bps_proxy.wire import UPSTREAM_URL
 
 log = logging.getLogger("bps_proxy")
@@ -162,7 +162,7 @@ def _http_error_message(exc: error.HTTPError) -> str:
             return detail["message"][:500]
         if isinstance(parsed.get("message"), str):
             return parsed["message"][:500]
-    return f"upstream returned HTTP {exc.code}"
+    return f"upstream returned HTTP {exc.code} via {network_description()}"
 
 
 def _decode_line(raw_line: bytes) -> str:
@@ -244,7 +244,7 @@ def iter_events(session: ChatGPTSession, body: dict, *, max_event_bytes: int | N
             reason = getattr(exc, "reason", None)
             log.warning("upstream connection failed stage=open exception_type=%s reason_type=%s",
                         type(exc).__name__, type(reason).__name__ if reason is not None else "none")
-            raise UpstreamError(502, "could not reach upstream") from exc
+            raise UpstreamError(502, f"could not reach upstream via {network_description()}") from exc
 
         if "text/event-stream" not in _content_type(response):
             raise UpstreamError(502, "upstream did not return an event stream")
