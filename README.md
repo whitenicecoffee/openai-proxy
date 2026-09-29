@@ -1,201 +1,201 @@
-# bps-proxy
+# bps-proxy：Codex 本地代理与 7897 链式出口
 
-把本机 Codex 等客户端的 Responses 请求转到 Excel 插件后端。客户端自己的工具会经 `run_officejs` 转接，仍由客户端执行。
+> 这是给已经登录 Codex、需要通过本机代理访问上游的用户使用的本地 Responses 代理。重点支持 Windows 上的“ TUN + 全局 HTTP 代理 7897 + 后续 VPS/其他链式出口”场景。
 
-社区交流：[LINUX DO](https://linux.do/)。
+## 先看这里：它解决什么问题
 
-这是独立的社区项目，与 OpenAI 没有隶属或背书关系。上游接口及账号可用性可能变化。
-
-默认监听本机 `127.0.0.1`，也支持 `localhost` 和 IPv6 回环地址 `::1`；不允许绑定 `0.0.0.0` 等对外地址，也不接受浏览器网页直接请求。代理使用你的登录态访问上游，请只在可信的个人电脑上运行。
-
-## 效果参考
-
-使用本代理后，由 GPT-6 Astra 生成的 HTML / SVG 动画示例：鹈鹕驾驶跑车的海岸场景。
-
-![GPT-6 Astra 生成的鹈鹕跑车 SVG 动画效果](docs/images/pelican-svg-example.png)
-
-## 需要
-
-- Python 3.9 或更高；安装时会一并安装 zstandard，用于读取 Codex 的压缩请求
-- 本机 Codex 已经登录。默认读取 `~/.codex/auth.json`；设置了 `CODEX_HOME` 时读取该目录下的 `auth.json`
-
-## 安装
-
-```bash
-git clone https://github.com/whitenicecoffee/openai-proxy.git
-cd openai-proxy
-```
-
-在 Python 虚拟环境中安装依赖和命令行入口：
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install .
-bps-proxy --help
-```
-
-Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` 激活虚拟环境。
-
-## 启动
-
-Windows 用户只需运行一个启动入口；它会自动完成配置并启动代理。撤销时再运行撤销脚本。
-
-### Windows 推荐流程
-
-1. 双击 `start.bat`。它会自动写入 Codex 配置，然后启动本地代理服务。
-2. 关闭已有的 Codex 终端，在新终端启动 Codex 并新建对话。
-
-网络链路固定为：`Codex -> http://127.0.0.1:8787`，再由本地代理访问上游。Codex 不会改为访问 `127.0.0.1:7897`；`7897` 只用于本地代理的上游出口。启动脚本会把 `127.0.0.1`、`localhost` 和 `::1` 写入 `%CODEX_HOME%\.env` 的 `NO_PROXY/no_proxy`，这是 Codex 启动时读取的环境文件；同时同步 Windows 用户环境变量，避免系统代理把本机请求错误地转发到 `7897`。这不会改变外部上游的系统代理链路。已有 Codex 进程必须完全退出后重新启动，旧进程不会重新读取环境文件。
-
-配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置，选择项目自己的 `openai-proxy` provider，并关闭该 provider 的 WebSocket，让 Codex 直接使用 HTTP/SSE。这些设置带有可恢复标记。内置 `openai` 是 Codex 保留的 provider ID，不能在 `model_providers` 中覆盖。如果之前版本产生了 `reserved built-in provider IDs: openai`，更新仓库后重新运行 `start.bat`，脚本会自动删除旧的非法表并迁移到 `openai-proxy`。
-
-需要恢复官方通道时，先停止代理，再运行：
-
-```bat
-A_close.bat
-```
-
-撤销脚本会移除代理地址、启动脚本写入的 WebSocket 设置和本次加入的本机 `NO_PROXY` 项，并恢复它们原来的值，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
-
-Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，优先使用系统/环境代理；如果环境变量里没有 HTTP/HTTPS 代理，代理还会读取 Windows Internet Settings 的 `ProxyServer`（例如 `127.0.0.1:7897`）。如果上游代理返回 502/503/504 或连接失败，会自动回退到系统/TUN 直连路径。这样保留你的全局链式代理规则，同时兼容代理链临时返回网关错误的情况。启动窗口会显示实际网络模式；如果日志显示 `proxies=none`，说明 Python 没有检测到 7897，不能把它当成已经走了系统代理。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若希望先走 TUN、失败后再走系统代理，可设置 `set BPS_UPSTREAM_MODE=auto`。
-
-### TUN + 全局 7897 端口（尤其是链式代理）
-
-这一节专门给“本机 TUN + 全局代理监听 7897 + 后面还有 VPS/其他出口”的用户。保持下面的拓扑，不要把 Codex 的地址改成 7897：
+如果你的网络路径是下面这样，本仓库就是为这个场景整理的：
 
 ```
 Codex
-  └─ HTTP/SSE → http://127.0.0.1:8787/v1
-                   └─ bps-proxy 上游出口 → 系统代理 127.0.0.1:7897
-                                             └─ TUN/全局代理 → VPS 或后续链式出口 → 上游
+  └─ http://127.0.0.1:8787/v1
+       └─ bps-proxy 上游出口
+            └─ 系统 HTTP 代理 http://127.0.0.1:7897
+                 └─ TUN/全局代理 → VPS 或其他链式出口 → 上游
 ```
 
-- `8787` 是 Codex 访问的本机代理入口；`7897` 是 bps-proxy 访问外部上游时使用的本地 HTTP 出口。两者职责不同，不能互换。
-- `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，先走系统/环境代理（检测到 7897 时就是这条链），只有网关错误或连接失败才回退到直连/TUN。这样不会拆掉你的 TUN 或链式出口规则。
-- 启动脚本写入的 `NO_PROXY/no_proxy` 只包含 `127.0.0.1、localhost、::1`，作用是让 Codex 到 8787 的本机请求不再绕去 7897；外部上游请求仍按上面的 7897 链路发送。
-- 如果系统代理没有被 Python 检测到，才使用显式出口：
+这里有两个本地端口，职责不能混用：
+
+- `127.0.0.1:8787` 是 Codex 访问的本地代理入口，Codex 的 `base_url` 必须指向它。
+- `127.0.0.1:7897` 是 bps-proxy 访问外部上游时使用的 HTTP 出口，不是 Codex 的接口地址。
+- TUN、全局代理和后续 VPS 链路继续由你的系统代理软件负责，本项目不会替换或关闭它们。
+
+本项目适合以下用户：
+
+- Windows 上使用 Codex CLI，需要一键写入配置并启动本地代理的人。
+- 已经使用 TUN、全局代理或多级代理链，希望外部请求先经过本机 7897 的人。
+- 需要在出现网关错误时保留 TUN 直连回退，同时不让 Codex 的 8787 本机请求绕到 7897 的人。
+- 希望随时用一个脚本恢复原 Codex 配置的人。
+
+本项目不等于官方 OpenAI API，也不是浏览器网页代理。它读取本机 Codex 登录态，把 Codex 的 Responses 请求转到 BPS/Excel 插件后端；请只在自己信任的电脑上使用。
+
+## 与原仓库的区别
+
+本仓库沿用 `kokojacket/openai-proxy` 的 BPS Responses 转发核心，但针对 Windows Codex 和代理链重新整理了入口、配置和网络行为。原仓库地址是 [kokojacket/openai-proxy](https://github.com/kokojacket/openai-proxy)；当前仓库地址是 [whitenicecoffee/openai-proxy](https://github.com/whitenicecoffee/openai-proxy)。
+
+| 方面 | 原仓库 README 的默认方式 | 当前仓库的方式 |
+| --- | --- | --- |
+| 适用重点 | 通用本地 BPS 代理 | Windows Codex、TUN、7897 和链式出口 |
+| Codex 配置 | 手动写顶层 `openai_base_url` | `start.bat` 自动写入 `openai-proxy` provider，并关闭 WebSocket，使用 HTTP/SSE |
+| Windows 启动 | 直接启动服务 | `start.bat` 一次完成配置和启动；`A_close.bat` 撤销配置 |
+| 本机请求 | 依赖用户自己处理代理绕行 | 自动把 `127.0.0.1`、`localhost`、`::1` 写入 Codex `.env` 的 `NO_PROXY/no_proxy`，并同步 Windows 用户环境变量 |
+| 上游出口 | 按原有环境运行 | `system` 模式先走系统/环境代理；Windows 环境变量缺失时读取 Internet Settings；网关或连接失败时回退到 TUN/直连 |
+| provider 命名 | 旧配置可能使用保留的 `openai` 表 | 使用自定义 `openai-proxy`，并清理旧版本产生的非法 `[model_providers.openai]` |
+
+原有的 BPS/Excel 后端、Responses、工具转接、图片、压缩请求和模型目录能力仍然保留；变化集中在 Codex 接入、Windows 配置恢复和上游网络路径。
+
+## Windows：推荐使用方式
+
+### 1. 安装
+
+在 PowerShell 中执行：
+
+```powershell
+git clone https://github.com/whitenicecoffee/openai-proxy.git
+cd openai-proxy
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .
+```
+
+如果已经存在 `.venv`，更新代码后重新执行：
+
+```powershell
+git pull --ff-only
+.\.venv\Scripts\python.exe -m pip install .
+```
+
+### 2. 启动
+
+Windows 只有一个开始入口：`start.bat`。不要在两个 start 脚本之间选择，也不需要 `A_start.bat`。
 
 ```bat
-set BPS_UPSTREAM_MODE=proxy
-set BPS_UPSTREAM_PROXY=http://127.0.0.1:7897
-start.bat
+.\start.bat
 ```
-这只改变 bps-proxy 的上游出口，不改变 Codex 的 `base_url`。
 
-启动窗口看到下面两类信息，表示链路已按预期建立：
+`start.bat` 会依次完成：
+
+1. 选择项目 `.venv` 中的 Python；没有虚拟环境时使用系统 `python`。
+2. 修改 `%CODEX_HOME%\config.toml`（未设置 `CODEX_HOME` 时为 `%USERPROFILE%\.codex\config.toml`）。
+3. 设置 `model_provider = "openai-proxy"`、`base_url = "http://127.0.0.1:8787/v1"`、Responses 协议和 `supports_websockets = false`。
+4. 给 Codex 本机地址增加 `NO_PROXY/no_proxy`，避免 Codex 访问 8787 时被系统代理转发到 7897。
+5. 启动 bps-proxy，并在窗口中显示实际检测到的上游出口。
+
+配置写入带有 `bps-proxy` 管理标记，重复运行是幂等的，也会保留配置文件里的其他内容。启动脚本不会修改 `auth.json`，不会关闭 TUN，也不会改变 7897 代理软件的规则。
+
+### 3. 完全重启 Codex
+
+启动脚本完成后，完全退出已有的 Codex CLI/终端进程，再重新打开 Codex 并新建对话。旧进程不会重新读取 `%CODEX_HOME%\.env` 和新的 `NO_PROXY`。
+
+### 4. 恢复原配置
+
+先在运行代理的窗口按 `Ctrl+C` 停止服务，再执行：
+
+```bat
+.\A_close.bat
+```
+
+`A_close.bat` 会恢复 `config.toml` 中原来的 provider、地址和本次加入的 `NO_PROXY/no_proxy`；它不会关闭 TUN 或修改 7897。恢复后重启 Codex 并新建对话。
+
+## TUN、全局 7897 和链式代理
+
+### 推荐模式：`system`
+
+Windows `start.bat` 默认设置 `BPS_UPSTREAM_MODE=system`。在这个模式下，外部上游请求按下面顺序处理：
+
+1. 优先使用 Python 检测到的 HTTP/HTTPS 系统代理；如果系统代理是 7897，就先进入 7897。
+2. 如果 7897 返回 502、503、504，或连接本身失败，再尝试操作系统直连路径；在 TUN/全局模式下，这条路径通常仍由 TUN 接管。
+
+因此，使用链式代理时不要把模式改成 `direct`，也不要把 Codex 的地址改成 7897。`NO_PROXY` 只负责本机 8787，外部上游仍然先走 7897。
+
+启动窗口中应看到类似内容：
 
 ```
 [OK] base_url = http://127.0.0.1:8787/v1
 上游网络模式：system first, direct/TUN fallback (outbound proxies=http=http://127.0.0.1:7897,https=http://127.0.0.1:7897)
 ```
 
-可以用下面的日志判断请求是否真正完成：
+### 四种上游模式
 
-- `outbound proxies=...7897`：Python 已检测到 7897，外部请求会先交给本地代理。
-- `local request GET /v1/models status=200`：Codex 已绕过系统代理并访问 8787。
-- `local request POST /v1/responses status=200` 后出现 `relay output ... terminal=response.completed`：这一轮上游响应已完成。仅有 HTTP 200 还不等于流式响应完成。
-- 某一轮出现 `terminal=response.failed`，但随后同一对话重试并出现 `response.completed`，通常是一次上游流式重试；持续失败才需要排查出口。
-
-| 现象 | 判断 | 处理 |
+| 环境变量 | 顺序 | 适合场景 |
 | --- | --- | --- |
-| 502，且日志里没有 `local request` | Codex 仍在使用旧进程或旧环境，没有访问 8787 | 完全退出所有 Codex 进程；重新运行 `start.bat`，再启动 Codex 并新建对话 |
-| 启动日志为 `outbound proxies=none` | Python 没有检测到系统的 7897 | 在 Windows 系统代理中确认 HTTP/HTTPS 都指向 7897，或使用上面的 `BPS_UPSTREAM_MODE=proxy` |
-| 有 `local request`，但随后 `upstream connection failed` / `request failed` | 8787 已通，问题在 7897、TUN 或后续链式出口 | 先确认 7897 本地代理可用，再检查 TUN/全局模式和链式出口顺序；不要修改 Codex 的 8787 地址 |
-| 只想验证本机入口 | 只检查 8787，不代表上游登录态可用 | PowerShell 使用 `curl.exe --noproxy "*" http://127.0.0.1:8787/health` 和 `curl.exe --noproxy "*" http://127.0.0.1:8787/v1/models` |
+| `BPS_UPSTREAM_MODE=system` | 系统/环境代理优先，网关或连接失败时回退 TUN | 7897 全局出口和链式代理，推荐 |
+| `BPS_UPSTREAM_MODE=proxy` | 只使用 `BPS_UPSTREAM_PROXY` | Python 检测不到系统代理，但你明确知道 7897 地址 |
+| `BPS_UPSTREAM_MODE=direct` | 只走操作系统直连/TUN | 只希望 TUN 接管，不使用 7897 |
+| `BPS_UPSTREAM_MODE=auto` | TUN 优先，失败后再走系统代理 | 不要求 7897 优先的网络 |
 
-如果你的链式代理只提供本地 HTTP 代理，而没有让 Python 直连流量进入 TUN，可以这样启动：
+如果系统代理未被 Python 检测到，可以显式指定 7897：
 
 ```bat
 set BPS_UPSTREAM_MODE=proxy
-set BPS_UPSTREAM_PROXY=http://127.0.0.1:7890
-start.bat
+set BPS_UPSTREAM_PROXY=http://127.0.0.1:7897
+.\start.bat
 ```
 
-如果要临时恢复原来的环境代理行为：
+若启动日志显示 `outbound proxies=none`，不能把它当成“已经走了 7897”；这表示 Python 没有检测到系统代理，需要检查 Windows HTTP/HTTPS 代理设置，或使用上面的显式模式。
 
-```bat
-set BPS_UPSTREAM_MODE=system
-start.bat
+## 如何确认链路真的通了
+
+### 先检查本机入口
+
+PowerShell 使用 `curl.exe`，避免 `curl` 被 PowerShell 映射为其他命令：
+
+```powershell
+curl.exe --noproxy "*" http://127.0.0.1:8787/health
+curl.exe --noproxy "*" http://127.0.0.1:8787/v1/models
 ```
 
-### macOS / Linux
+这两项只证明 8787 可以访问，不证明 Codex 登录态或外部上游一定可用。
 
-先手动把下面一行放入 `$CODEX_HOME/config.toml`（未设置时为 `~/.codex/config.toml`），再启动服务：
+### 再看代理日志
 
-```toml
-model_provider = "openai-proxy"
+| 日志 | 含义 |
+| --- | --- |
+| `outbound proxies=...7897` | Python 检测到了 7897，外部请求会先进入本地 HTTP 代理 |
+| `local request GET /v1/models status=200` | Codex 已经访问本机 8787；本机请求没有被错误地送到 7897 |
+| `local request POST /v1/responses status=200` | 8787 接受了这一轮 Responses 请求 |
+| `relay output ... terminal=response.completed` | 这一轮上游流式响应已经完成 |
+| `terminal=response.failed` 后很快出现下一轮 `response.completed` | 某次上游流式请求或重试失败，整体链路仍可能正常；看是否持续失败 |
 
-[model_providers.openai-proxy]
-name = "OpenAI Proxy"
-base_url = "http://127.0.0.1:8787/v1"
-wire_api = "responses"
-requires_openai_auth = true
-supports_websockets = false
+HTTP 200 只代表本地代理开始返回，判断模型请求是否完成要看 `terminal=response.completed`。
+
+## 502 和链式代理排错
+
+| 现象 | 判断 | 处理 |
+| --- | --- | --- |
+| Codex 报 502，代理日志里没有 `local request` | Codex 没有访问 8787，通常是旧进程还在使用旧配置或旧环境 | 完全退出 Codex；重新运行 `start.bat`；再启动 Codex 并新建对话 |
+| 有 `local request`，但出现 `upstream connection failed` 或 `request failed` | 8787 已经通，问题在 7897、TUN 或后续链式出口 | 先确认 7897 本地代理能用，再检查 TUN/全局模式和链式出口顺序；不要改 Codex 的 8787 地址 |
+| `outbound proxies=none` | Python 没有找到系统/环境代理 | 设置 Windows HTTP/HTTPS 系统代理，或显式设置 `BPS_UPSTREAM_MODE=proxy` 和 `BPS_UPSTREAM_PROXY` |
+| 启动时提示 `reserved built-in provider IDs: openai` | 旧版本曾覆盖 Codex 保留的 `openai` provider | 更新仓库后重新运行 `start.bat`，它会迁移到 `openai-proxy` 并删除旧表 |
+| 8787 端口被占用 | 旧 bps-proxy 进程仍在运行 | 关闭旧代理窗口或结束旧 Python 进程，再运行 `start.bat` |
+| 返回 401 | Codex 登录态无效或过期 | 在本机重新登录 Codex；代理不会替你刷新登录令牌 |
+
+## macOS / Linux
+
+安装：
+
+```bash
+git clone https://github.com/whitenicecoffee/openai-proxy.git
+cd openai-proxy
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install .
 ```
 
-启动代理：
+启动：
 
 ```bash
 ./start.sh
 ```
 
-回到官方通道时运行 Windows 的 `A_close.bat`；macOS / Linux 删除 `model_provider` 和 `[model_providers.openai-proxy]` 整个表，再重启 Codex。
-
-也可以：
+也可以直接运行：
 
 ```bash
 python3 -m bps_proxy
 ```
 
-默认地址是 `http://127.0.0.1:8787/v1`。换端口：`python3 -m bps_proxy --port 8788`。
+默认监听 `http://127.0.0.1:8787/v1`。换端口：`python3 -m bps_proxy --port 8788`。Linux/macOS 没有 Windows 的自动配置和撤销脚本，需要手动编辑 `$CODEX_HOME/config.toml`；未设置时使用 `~/.codex/config.toml`。
 
-确认服务已启动：
-
-```bash
-curl http://127.0.0.1:8787/health
-```
-
-健康接口仅检查本机代理是否可访问，不检查登录态或上游可用性。日志输出到终端。端口被占用时，停止占用它的旧进程或换一个端口。
-
-### 并发与限速
-
-这些限制在同一个代理进程内共享，按模型请求计数，不按聊天窗口计数。一个会话中的子任务或后台工作也可能产生重叠请求。
-
-| 参数 | 默认值 | 含义 |
-| --- | --- | --- |
-| `--max-concurrent` | 8 | 同时处理的模型请求数 |
-| `--max-pending` | 32 | 活动请求已满时的等待队列容量 |
-| `--queue-timeout` | 120 | 等待进入处理阶段的最长秒数 |
-| `--upstream-rps` | 5 | 滚动 1 秒窗口内最多发起的上游请求数 |
-
-超出活动请求上限后按到达顺序排队；只有队列已满或等待超时才返回 503，并带 `Retry-After: 1`。健康检查和模型目录查询不占模型请求名额。
-
-上游发起限速与活动请求上限分别生效。首次生成、每次重试和实际附件上传共用每秒额度，超出后等待；附件缓存命中不计数。排队的 120 秒上限不代表整个生成过程的超时。
-
-例如，显式指定默认参数：
-
-```bash
-./start.sh --max-concurrent 8 --max-pending 32 --queue-timeout 120 --upstream-rps 5
-```
-
-这些是代理的默认保护参数，参考 ghcp_proxy 的连接池与请求发起策略，不代表 OpenAI 公布的账号配额。
-
-### 流式响应大小
-
-上游 SSE 的单行和单事件默认上限均为 **16 MiB**，可用正整数参数调整，例如：
-
-```bash
-./start.sh --max-sse-event-mib 32
-```
-
-这是响应字节大小限制，与模型的上下文 token 上限分别生效。调高会增加并发请求可能占用的内存；修改启动参数后需重启代理。
-
-启动日志的 `max_sse_event_bytes` 显示实际生效值。超限日志记录 `request_id`、事件类型、行或事件限制、已读取字节数及上限，不记录响应正文。单行超限时只读取到上限加 1 字节，因此日志中的 `observed_bytes` 是已观测值，不是完整行大小。至少 4 MiB 的成功事件另记 `event_bytes`，便于判断是否接近上限。
-
-## 接到 Codex
-
-在用户配置 `~/.codex/config.toml` 中加入下面的配置；设置了 `CODEX_HOME` 时修改对应目录的 `config.toml`：
+手动配置：
 
 ```toml
 model_provider = "openai-proxy"
@@ -208,150 +208,128 @@ requires_openai_auth = true
 supports_websockets = false
 ```
 
-这里使用项目自己的 `openai-proxy` provider；不要把 `openai` 写到 `[model_providers.*]` 下，因为它是 Codex 保留的内置 ID。`supports_websockets = false` 用来跳过会反复失败的 WebSocket 预连接，改走代理已经支持的 HTTP/SSE；原有模型和推理档位设置可以保留。实际可用模型见下方目录。
+保存后重启 Codex 并新建对话。
 
-`start.bat` 会自动把 `model_provider` 切到 `"openai-proxy"`，写入本地 `base_url`、Responses 协议和 `requires_openai_auth = true`；撤销时恢复原值。手动配置时也使用 `openai-proxy`，不要覆盖内置 `openai`。
+## 支持的接口与请求
 
-保存后重启 Codex 客户端并新建对话，使连接地址与模型目录重新加载。该地址应放在用户配置中，项目内的 `.codex/config.toml` 不适合配置连接地址。代理没启动时，Codex 会连不上。
+提供以下本地接口：
 
-要回到官方通道，运行 Windows 的 `A_close.bat`；macOS / Linux 删除 `model_provider` 和 `[model_providers.openai-proxy]` 整个表，再重启 Codex。
+- `GET /health`：检查本机代理是否可访问。
+- `GET /v1/models`：返回代理内置模型目录。
+- `POST /v1/responses`：Responses 请求，支持流式和非流式。
+- `POST /v1/responses/compact`：BPS 原生上下文压缩。
+- 上述接口也兼容省略 `/v1` 的路径。
 
-### 确认请求经过代理
+协议行为：
 
-先检查本机服务与目录：
+- 支持未压缩 JSON，以及 `zstd`、`gzip`、`deflate` 请求体；请求体和解压后内容均最多 32 MiB。
+- 支持字符串或消息数组形式的 `input`，以及布尔 `stream`。
+- WebSocket 升级请求返回 426，供 Codex 回退到 HTTP/SSE。
+- 不支持 `previous_response_id`、`conversation` 或 `background = true` 异步响应；这些请求返回 400。
+- 不接受分块上传；请求需要 `Content-Length`。
+- 网络超时通常返回 504，其他上游连接错误返回 502；流式响应开始后会通过 SSE 的 `response.failed` 表示失败。
 
-```bash
-curl --fail http://127.0.0.1:8787/health
-curl --fail http://127.0.0.1:8787/v1/models
-```
+### 工具与图片
 
-然后在 Codex 新建对话并发出一条请求，按相同的 `request_id` 对照代理日志：
+- 同时识别顶层 `tools` 和 Responses Lite 的 developer `additional_tools`。
+- 支持普通函数工具和 `custom` 文本工具；工具调用由客户端执行，代理负责转发和回放。
+- 工具结果保留文本和图片内容；未声明的工具不会被自动启用。
+- 支持 PNG、JPEG、GIF、WebP；单张图片最多 20 MiB，解码后合计最多 32 MiB。
+- 图片被上游拒绝时，会尝试上传到 BPS 附件接口并复用同账号缓存；上传失败不会静默丢弃图片。
 
-- `service configuration` 显示已加载代码的 `build` 摘要、并发参数、SSE 大小上限、目录版本与校验值。
-- `local request` 应出现 `POST /v1/responses`；`upstream start` 分别记录 `requested_model` 和实际 `model`，可用于核对型号映射。
-- `relay ended` 的 `terminal=response.completed` 表示该次响应已完成。HTTP 200 或健康接口成功本身不能证明模型请求完成；流式响应仍可能以 `response.failed` 结束。
+## 模型、档位与目录
 
-Responses Lite 请求的工具来源记为 `additional_tools`，普通请求记为 `top_level`。工具数量取决于客户端本次声明，不应仅凭顶层 `tools` 缺失判断工具没有转发。WebSocket 升级后的 426 用于回退到 HTTP/SSE；带 `Origin` 的浏览器请求会被本机守卫拒绝。
+内置目录包含：`gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-luna`、`gpt-5.6-terra`。默认模型是 `gpt-5.6-sol`，实际可用性取决于上游和账号权限。
 
-### 更新已有安装
+请求型号映射：
 
-拉取新代码后，在虚拟环境中重新安装依赖和命令行入口：
-
-```bash
-git pull --ff-only
-python -m pip install .
-```
-
-随后使用原来的启动方式重启代理，再重启 Codex。已经运行的 Python 进程不会自动加载磁盘上的新代码；仅重启 Codex 也不会更新代理进程。
-
-## 并行验证新版本
-
-macOS / Linux 上，可以在独立工作副本中启动候选服务：
-
-```bash
-python3 tools/candidate.py start
-python3 tools/candidate.py status
-python3 tools/candidate.py run
-python3 tools/candidate.py stop
-```
-
-默认候选端口为 `18787`，缓存与日志位于 `~/.bps-proxy/candidates/<副本标识>/`。`run` 通过 Codex 的 `-c` 参数指定本次连接地址，不写入共享的 `~/.codex/config.toml`。ChatGPT 桌面端与独立 CLI 的现有连接配置不会因此改变。
-
-若端口已被占用，使用 `python3 tools/candidate.py --port 18788 start` 和相同端口的 `run`。工具不会停止占用端口的其他服务，也不允许用候选模式绑定 `8787`。`stop` 只停止本副本启动的候选进程。
-
-验证图片可以使用：
-
-```bash
-python3 tools/candidate.py run -- exec --image /path/to/image.png '描述这张图片'
-```
-
-完成验证后再安排桌面端切换；已有对话依赖原代理时，保持原进程和共享配置。候选缓存独立，切换后应开启新对话，不应假定能接续原代理缓存中的工具调用。
-
-## 图片
-
-支持用户消息中的图片，以及工具结果数组中的截图。PNG、JPEG、GIF、WebP 会检查编码、格式头部、尺寸及大小。单张最多 20 MiB，图片解码后合计最多 32 MiB；整个 JSON 请求仍受 32 MiB 限制，因此 base64 的编码开销也会计入请求体。
-
-内联图片被上游拒绝时，会尝试上传到 BPS 附件接口并使用返回的附件编号。同账号的重复图片复用缓存，附件失效时重新上传；不需要自行搭建公网图片服务。图片会发送至 OpenAI 的 BPS 服务，代理不能控制该服务的数据保留期限。
-
-图片格式错误、上传失败或附件仍被拒绝时会返回错误，不会省略图片后继续回答。工具结果中的相邻文字和图片数组会一并保留。
-
-## 模型和档位
-
-代理的模型目录列出：`gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-luna`、`gpt-5.6-terra`。实际可用性取决于上游和账号权限。
-
-模型指令和元数据来自随包发布的 Codex 0.155.0 目录快照，保留四个模型的完整模板、`tokens / 10000` 工具输出截断策略和 `use_responses_lite: true`。客户端自定义的 `model_instructions_file` 仍由 Codex 决定优先级。该快照的版本与校验值可在启动日志查看。
-
-这里的 Responses Lite 是请求协议设置：工具目录可放在 `input` 中的 developer `additional_tools` 项里。它与模型名称、推理档位是不同的设置；代理同时兼容 Lite 和顶层 `tools` 两种声明方式。
-
-需要使用另一份目录时，可通过 `--model-catalog /path/to/catalog.json` 或 `BPS_MODEL_CATALOG` 指定；目录必须包含四个型号及完整元数据。启动后固定使用这份快照，更新文件后需重启；无效目录会报告错误。开发者可以使用 `tools/import_model_catalog.py SOURCE --output NEW_FILE` 从明确选择的目录文件生成去除账号身份字段的快照。
-
-以下请求名称固定映射到对应的 5.6 型号；Codex 主会话、子任务及后台工作发出的普通 Responses 请求都使用同一映射：
-
-| 请求型号 | 实际转发型号 |
+| Codex 请求型号 | 实际转发型号 |
 | --- | --- |
-| gpt-6-sol | gpt-5.6-sol |
-| gpt-6-terra | gpt-5.6-terra |
-| gpt-6-luna | gpt-5.6-luna |
+| `gpt-6-sol` | `gpt-5.6-sol` |
+| `gpt-6-terra` | `gpt-5.6-terra` |
+| `gpt-6-luna` | `gpt-5.6-luna` |
 
-`gpt-6-astra` 和原有 5.6 型号保持原样，`gpt-5.6-terra` 不会转到 Luna。以上是固定别名映射，不是请求失败后的降级。日志分别记录请求型号与实际型号；上游拒绝或失败时，不再改用其他模型重试。
+`gpt-6-astra` 和已有 `gpt-5.6-*` 型号保持原样。以上是固定别名映射，不是请求失败后的降级；上游失败时不会偷偷换模型。
 
-`low`、`medium`、`high`、`xhigh`、`ultra` 原样送出。这个后端没有 `max`，选这一档时代理会改成 `xhigh`。
+`low`、`medium`、`high`、`xhigh`、`ultra` 原样转发；Codex 的 `max` 会映射为 `xhigh`。
 
-## 请求与工具
+模型目录来自随包发布的 Codex 0.155.0 快照，启动日志会显示目录版本和校验值。如需指定其他目录：
 
-- 提供 `POST /v1/responses`、`POST /v1/responses/compact`、`GET /v1/models` 和 `GET /health`，同时兼容省略 `/v1` 的路径。
-- 上下文压缩使用 BPS 原生压缩，返回的不透明历史可随下一次请求继续发送。上游必须返回恰好一条有效压缩项；数量或流式事件不一致、失败、断流、仅返回普通文字时都会报告失败。
-- WebSocket 升级请求返回 `426`，供 Codex 回退到 HTTP/SSE。
-- `input` 使用字符串或消息数组；`stream` 使用布尔值。支持流式和非流式响应，也会保留上游的 `incomplete`、`failed` 状态。
-- 同时识别顶层 `tools` 和 Responses Lite 的 developer `additional_tools` 声明，校验后统一转为工具隧道目录。
-- 支持普通函数工具及 `custom` 文本工具。参数类型、必填项、枚举和嵌套约束会转成自然语言工具目录，不向上游发送客户端 `tools` 或 `tool_choice` 字段。工具结果保留文本和图片内容；`tool_choice: "none"` 会禁用客户端工具，未声明的工具不会被自动启用。格式有歧义的可执行脚本会要求重新生成，不猜测补写引号。
-- `tool_choice: "required"` 或指定工具时，必须返回有效的客户端调用；没有匹配工具返回 `400`，漏调用经一次纠正仍未恢复则返回 `response.failed`。上游的拒绝回答、`failed` 和 `incomplete` 状态保持原样。已有会话省略工具声明或用顶层空数组续接时沿用原目录；Lite 的 `additional_tools` 是完整声明，显式空目录会撤销此前工具。明确禁用本次工具请用 `tool_choice: "none"`。
-- 每次请求需携带完整对话历史。不支持 `previous_response_id`、`conversation` 或 `background: true` 异步响应模式；这类请求会返回 `400`。
-- 支持未压缩 JSON 以及 `Content-Encoding: zstd`、`gzip`、`deflate`。接收的请求体及解压后的内容均最多 32 MiB；损坏、截断或拼接的压缩数据会被拒绝。
-- 请求需要 `Content-Length`，不接受分块上传；读取客户端请求体超时为 30 秒。这是 Codex 模型请求的兼容接口，不包含登录、账户管理或其他 OpenAI 产品接口。
+```bash
+python3 -m bps_proxy --model-catalog /path/to/catalog.json
+```
 
-## 登录与缓存
+也可以使用环境变量 `BPS_MODEL_CATALOG`。目录必须包含所需模型及完整元数据，修改后需要重启代理。
 
-登录态无效或过期时返回 `401`；请重新登录本机 Codex。代理不会自动刷新登录令牌。
+## 并发、限速与流式大小
 
-新调用按账号和会话隔离。工具回放缓存默认位于 `~/.bps-proxy/calls.json`，可以通过 `--state /path/to/calls.json` 更换位置。缓存包含完整的原始调用（包括 `id`、`summary` 和 `references`）与轮次计数，请不要上传或分享；在 macOS / Linux 上，新写入的缓存仅允许当前用户读写。调用与轮次计数各最多保留 512 条，写盘失败时会记录警告并继续使用内存中的记录。缓存丢失或被淘汰后，重建的调用无法保证与原始调用完全一致。
+| 参数 | 默认值 | 作用 |
+| --- | --- | --- |
+| `--max-concurrent` | 8 | 同时处理的模型请求数 |
+| `--max-pending` | 32 | 活动请求满后的等待队列容量 |
+| `--queue-timeout` | 120 秒 | 排队最长等待时间 |
+| `--upstream-rps` | 5 | 滚动 1 秒内最多发起的上游请求数 |
+| `--max-sse-event-mib` | 16 | 上游 SSE 单行和单事件大小上限 |
 
-同一轮工具续接保持 `turn_id`，内部重试会递增 `agent_iteration`；客户端重复提交同一阶段保持计数，收到下一阶段的工具结果后继续递增。计数会随缓存保存，避免内部重试后收到客户端工具结果时回退。旧格式缓存可读取，但无作用域的旧条目不会自动用于新账号或新会话。
+这些限制在一个代理进程内共享，重试和实际附件上传也会占用上游发起额度。健康检查和模型目录查询不占模型请求名额。
 
-普通文本增量转发。可执行工具调用只在上游正式完成响应后交付；断流、事件损坏或连续工具转接失败会保留失败状态，不合成成功响应。网络超时返回 `504`，其他连接错误返回 `502`；如果流式响应已经开始，则通过 SSE `response.failed` 事件报告。上游 SSE 单行及单事件默认最多 16 MiB，可通过 `--max-sse-event-mib` 调整；超限会关闭上游连接并报告失败。空闲连接超时为 5 分钟，单次上游流最长为 15 分钟。
+示例：
 
-Excel 行为指令由后端注入，代理无法将其从模型实际收到的提示中删除。返回给客户端的 `instructions` 字段会还原为客户端原文，但这不代表后端提示词已被清除；该转接方式无法保证与官方 Responses API 完全一致。
+```bash
+./start.sh --max-concurrent 8 --max-pending 32 --queue-timeout 120 --upstream-rps 5 --max-sse-event-mib 32
+```
+
+## 登录态、缓存与安全
+
+- 默认读取 `~/.codex/auth.json`；设置 `CODEX_HOME` 时读取对应目录的 `auth.json`。
+- 工具回放缓存默认是 `~/.bps-proxy/calls.json`，可用 `--state /path/to/calls.json` 修改。
+- 缓存可能包含完整工具调用、`id`、`summary` 和 `references`，不要上传、提交或分享。
+- 服务只允许绑定回环地址（`127.0.0.1`、`localhost`、`::1`），不允许绑定 `0.0.0.0` 等外部地址。
+- 不要把 `auth.json`、Codex `.env`、请求日志、对话内容或调用缓存提交到 GitHub。
+
+## 更新与恢复
+
+更新代码：
+
+```powershell
+git pull --ff-only
+.\.venv\Scripts\python.exe -m pip install .
+```
+
+然后停止旧的 Python 代理进程，重新运行 `start.bat`；仅重启 Codex 不会让已经运行的代理进程加载新代码。
+
+恢复官方 Codex 通道：
+
+```bat
+.\A_close.bat
+```
+
+恢复后重启 Codex 并新建对话。macOS/Linux 手动删除 `model_provider` 和 `[model_providers.openai-proxy]` 整个表，再重启 Codex。
 
 ## 开发验证
+
+运行测试：
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-测试使用临时文件、回环 HTTP 服务和模拟上游，不需要真实账号或外部请求。
-
-安装了 Codex CLI 后，还可以检查真实客户端与代理的兼容性：
+测试使用临时文件、回环 HTTP 服务和模拟上游，不需要真实账号或外部请求。安装 Codex CLI 后还可以运行兼容性探针：
 
 ```bash
 python3 tools/probe_compatibility.py
 ```
 
-该脚本使用临时配置、模拟凭据和模拟模型响应，验证四个模型的 Lite 工具调用、真实临时文件写入与回读、完整调用回放、模型目录、请求解压、WebSocket 回退和压缩后续聊。它不修改现有 Codex 配置，也不验证真实 BPS 账号或上游服务。
+兼容性说明见 [docs/codex-compatibility.md](docs/codex-compatibility.md)。
 
-协议细节与测试覆盖见 [Codex 兼容说明](docs/codex-compatibility.md)。
+## 效果参考
 
-## 实现参考
+使用本代理后，可以让 Codex 生成 HTML/SVG 等文件；仓库中保留一个鹈鹕驾驶跑车的动画示例：
 
-SSE 单行与聚合事件的 16 MiB 保护参考 ranxi2001/sub2api 的 BPS 读取器（核对版本 `fe27f98`，`backend/internal/service/basispoints/stream.go`）；本代理增加了独立的启动参数和脱敏大小诊断。
+![GPT-6 Astra 生成的鹈鹕跑车 SVG 动画效果](docs/images/pelican-svg-example.png)
 
-图片附件上传与重传流程参考 Kaixxrua/excel-codex-bridge（核对版本 `66c41df`），请求解压边界参考其 `8a277df` 版本。请求限额、图片隔离与终态校验参考 ranxi2001/sub2api 的 BPS 通道（核对版本 `d215edd`），原生压缩触发方式参考其 `00bdb50` 版本。采用独立实现，保留轻量 HTTP 服务，仅增加 zstandard 依赖；没有引入这些项目的服务端框架或公网图片中转。
+## 贡献与许可证
 
-并发与发起频率参考 Nonary/ghcp_proxy（核对版本 `dfb758b`）：其 Excel HTTP/1.1 连接池最多 8 条连接，上游发起按每秒 5 次限速。本代理采用 8 个活动模型请求、有界 FIFO 排队和共享滚动窗口实现，重试与实际上传同样计入额度；没有引入 HTTPX 连接池。
+欢迎通过 [Issues](https://github.com/whitenicecoffee/openai-proxy/issues) 报告问题或提交 Pull Request。问题报告请附 Python 版本、操作系统、复现步骤和已脱敏日志，不要附登录令牌或调用缓存。
 
-## 贡献
-
-欢迎通过 GitHub Issues 报告问题，或提交 Pull Request。问题报告请附上 Python 版本、操作系统、复现步骤和已脱敏的错误信息。请勿上传登录令牌、`auth.json`、对话内容或工具调用缓存。
-
-## 许可证
-
-本项目采用 [MIT License](LICENSE)。
+本项目采用 [MIT License](LICENSE)。本项目是独立社区项目，与 OpenAI 没有隶属或背书关系；上游接口及账号可用性可能变化。
