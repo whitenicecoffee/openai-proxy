@@ -58,7 +58,7 @@ A_close.bat
 
 撤销脚本会移除代理地址、启动脚本写入的 WebSocket 设置和本次加入的本机 `NO_PROXY` 项，并恢复它们原来的值，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
 
-Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，优先使用系统/环境代理；如果上游代理返回 502/503/504 或连接失败，会自动回退到系统/TUN 直连路径。这样保留你的全局链式代理规则，同时兼容代理链临时返回网关错误的情况。启动窗口会显示实际网络模式。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若希望先走 TUN、失败后再走系统代理，可设置 `set BPS_UPSTREAM_MODE=auto`。
+Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，优先使用系统/环境代理；如果环境变量里没有 HTTP/HTTPS 代理，代理还会读取 Windows Internet Settings 的 `ProxyServer`（例如 `127.0.0.1:7897`）。如果上游代理返回 502/503/504 或连接失败，会自动回退到系统/TUN 直连路径。这样保留你的全局链式代理规则，同时兼容代理链临时返回网关错误的情况。启动窗口会显示实际网络模式；如果日志显示 `proxies=none`，说明 Python 没有检测到 7897，不能把它当成已经走了系统代理。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若希望先走 TUN、失败后再走系统代理，可设置 `set BPS_UPSTREAM_MODE=auto`。
 
 如果你的链式代理只提供本地 HTTP 代理，而没有让 Python 直连流量进入 TUN，可以这样启动：
 
