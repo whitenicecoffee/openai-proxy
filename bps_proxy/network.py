@@ -94,7 +94,7 @@ def description() -> str:
     if selected == "proxy":
         proxy = os.environ.get("BPS_UPSTREAM_PROXY", "").strip()
         return "proxy (configured)" if proxy else "proxy (missing BPS_UPSTREAM_PROXY)"
-    return f"system first, direct/TUN fallback (urllib proxies={_proxy_summary()})"
+    return f"system first, direct/TUN fallback (outbound proxies={_proxy_summary()})"
 
 
 def _direct_opener():
