@@ -78,10 +78,13 @@ start.bat
 先手动把下面一行放入 `$CODEX_HOME/config.toml`（未设置时为 `~/.codex/config.toml`），再启动服务：
 
 ```toml
-model_provider = "openai"
-openai_base_url = "http://127.0.0.1:8787/v1"
+model_provider = "openai-proxy"
 
-[model_providers.openai]
+[model_providers.openai-proxy]
+name = "OpenAI Proxy"
+base_url = "http://127.0.0.1:8787/v1"
+wire_api = "responses"
+requires_openai_auth = true
 supports_websockets = false
 ```
 
@@ -91,7 +94,7 @@ supports_websockets = false
 ./start.sh
 ```
 
-回到官方通道时删除这三项，再重启 Codex。
+回到官方通道时运行 Windows 的 `A_close.bat`；macOS / Linux 删除 `model_provider` 和 `[model_providers.openai-proxy]` 整个表，再重启 Codex。
 
 也可以：
 
@@ -149,16 +152,19 @@ curl http://127.0.0.1:8787/health
 在用户配置 `~/.codex/config.toml` 中加入下面的配置；设置了 `CODEX_HOME` 时修改对应目录的 `config.toml`：
 
 ```toml
-model_provider = "openai"
-openai_base_url = "http://127.0.0.1:8787/v1"
+model_provider = "openai-proxy"
 
-[model_providers.openai]
+[model_providers.openai-proxy]
+name = "OpenAI Proxy"
+base_url = "http://127.0.0.1:8787/v1"
+wire_api = "responses"
+requires_openai_auth = true
 supports_websockets = false
 ```
 
-这使用 Codex 内置的 `openai` provider，不需要另建 provider。`supports_websockets = false` 用来跳过会反复失败的 WebSocket 预连接，改走代理已经支持的 HTTP/SSE；原有模型和推理档位设置可以保留。实际可用模型见下方目录。
+这里使用项目自己的 `openai-proxy` provider；不要把 `openai` 写到 `[model_providers.*]` 下，因为它是 Codex 保留的内置 ID。`supports_websockets = false` 用来跳过会反复失败的 WebSocket 预连接，改走代理已经支持的 HTTP/SSE；原有模型和推理档位设置可以保留。实际可用模型见下方目录。
 
-`start.bat` 会自动把 `model_provider` 切到 `"openai"`，不会继续使用旧的 `bps` 或其他自定义 provider；撤销时恢复原值。手动配置时也请使用内置 `openai` provider。
+`start.bat` 会自动把 `model_provider` 切到 `"openai-proxy"`，写入本地 `base_url`、Responses 协议和 `requires_openai_auth = true`；撤销时恢复原值。手动配置时也使用 `openai-proxy`，不要覆盖内置 `openai`。
 
 保存后重启 Codex 客户端并新建对话，使连接地址与模型目录重新加载。该地址应放在用户配置中，项目内的 `.codex/config.toml` 不适合配置连接地址。代理没启动时，Codex 会连不上。
 
