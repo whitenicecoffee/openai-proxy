@@ -146,7 +146,7 @@ curl http://127.0.0.1:8787/health
 
 ## 接到 Codex
 
-在用户配置 `~/.codex/config.toml` 顶层加一行，放在所有 `[table]` 之前；设置了 `CODEX_HOME` 时修改对应目录的 `config.toml`：
+在用户配置 `~/.codex/config.toml` 中加入下面的配置；设置了 `CODEX_HOME` 时修改对应目录的 `config.toml`：
 
 ```toml
 model_provider = "openai"
