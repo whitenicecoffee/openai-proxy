@@ -51,6 +51,20 @@ Windows：
 start.bat
 ```
 
+Windows 上也可以使用一键配置脚本：
+
+```bat
+A_start.bat
+```
+
+它会在 `%CODEX_HOME%\\config.toml`（未设置时为 `%USERPROFILE%\\.codex\\config.toml`）写入代理地址，并自动去重。撤销配置使用：
+
+```bat
+A_close.bat
+```
+
+撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。两个脚本都优先使用项目的 `.venv\\Scripts\\python.exe`。
+
 也可以：
 
 ```bash
