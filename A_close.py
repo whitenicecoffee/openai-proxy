@@ -47,6 +47,19 @@ NO_PROXY_MARKER_RE = re.compile(
 )
 
 
+def _broadcast_environment_change() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SendMessageTimeoutW(
+            0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, None
+        )
+    except (AttributeError, OSError):
+        pass
+
+
 def _write_user_no_proxy(value: str) -> bool:
     os.environ["NO_PROXY"] = value
     os.environ["no_proxy"] = value
@@ -63,6 +76,7 @@ def _write_user_no_proxy(value: str) -> bool:
                     winreg.DeleteValue(key, "NO_PROXY")
                 except FileNotFoundError:
                     pass
+        _broadcast_environment_change()
         return True
     except (ImportError, OSError):
         return False
