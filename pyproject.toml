@@ -19,9 +19,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kokojacket/openai-proxy"
-Repository = "https://github.com/kokojacket/openai-proxy"
-Issues = "https://github.com/kokojacket/openai-proxy/issues"
+Homepage = "https://github.com/whitenicecoffee/openai-proxy"
+Repository = "https://github.com/whitenicecoffee/openai-proxy"
+Issues = "https://github.com/whitenicecoffee/openai-proxy/issues"
 
 [project.scripts]
 bps-proxy = "bps_proxy.__main__:main"
