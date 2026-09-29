@@ -48,13 +48,13 @@ Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` �
 
 配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置。
 
-如果只想重新写入配置、不启动代理，可以运行 `A_start.bat`。需要恢复官方通道时，先停止代理，再运行：
+需要恢复官方通道时，先停止代理，再运行：
 
 ```bat
 A_close.bat
 ```
 
-撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。`start.bat` 只负责启动代理，`A_start.bat` 和 `A_close.bat` 负责配置切换。
+撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。`start.bat` 只负责启动代理，`start.bat` 和 `A_close.bat` 负责配置切换。
 
 Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=direct`。这不会绕过 TUN；Python 只是不再读取 `HTTP_PROXY/HTTPS_PROXY`，实际连接仍由系统 TUN 和你的全局链式规则转发。启动窗口会显示实际网络模式。
 
