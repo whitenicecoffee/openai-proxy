@@ -46,7 +46,7 @@ Windows 用户只需运行一个启动入口；它会自动完成配置并启动
 1. 双击 `start.bat`。它会自动写入 Codex 配置，然后启动本地代理服务。
 2. 重启 Codex 并新建对话。
 
-配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置，选择项目自己的 `openai-proxy` provider，并关闭该 provider 的 WebSocket，让 Codex 直接使用 HTTP/SSE。这些设置带有可恢复标记。内置 `openai` 是 Codex 保留的 provider ID，不能在 `model_providers` 中覆盖。
+配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置，选择项目自己的 `openai-proxy` provider，并关闭该 provider 的 WebSocket，让 Codex 直接使用 HTTP/SSE。这些设置带有可恢复标记。内置 `openai` 是 Codex 保留的 provider ID，不能在 `model_providers` 中覆盖。如果之前版本产生了 `reserved built-in provider IDs: openai`，更新仓库后重新运行 `start.bat`，脚本会自动删除旧的非法表并迁移到 `openai-proxy`。
 
 需要恢复官方通道时，先停止代理，再运行：
 
