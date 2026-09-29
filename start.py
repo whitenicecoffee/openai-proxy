@@ -45,9 +45,9 @@ def configure() -> Path:
     path = config_path()
     current = read_config(path)
     body = OPENAI_BASE_URL_RE.sub("", current)
-    updated = f'openai_base_url = "{PROXY_BASE_URL}"\\n'
+    updated = f'openai_base_url = "{PROXY_BASE_URL}"\n'
     if body:
-        updated += body.lstrip("\\r\\n")
+        updated += body.lstrip("\r\n")
     write_config(path, updated)
     return path
 
