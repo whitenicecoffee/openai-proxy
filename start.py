@@ -23,12 +23,12 @@ SUPPORTS_WEBSOCKETS_RE = re.compile(
     r"(?m)^[ \t]*supports_websockets[ \t]*=[ \t]*(true|false)(?:[ \t]*#.*)?(?:\r?\n|$)"
 )
 MANAGED_SUPPORTS_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*\n"
+    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*(?:\r?\n)"
     r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
 )
 MANAGED_MARKER = "# bps-proxy: managed supports_websockets previous={previous}"
 MANAGED_BASE_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
     r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
 MANAGED_BASE_MARKER = "# bps-proxy: managed openai_base_url previous={previous}"
@@ -36,7 +36,7 @@ MODEL_PROVIDER_RE = re.compile(
     r"(?m)^[ \t]*model_provider[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
 )
 MANAGED_MODEL_PROVIDER_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
     r"^[ \t]*model_provider[ \t]*=.*(?:\r?\n|$)"
 )
 MANAGED_MODEL_PROVIDER_MARKER = "# bps-proxy: managed model_provider previous={previous}"
