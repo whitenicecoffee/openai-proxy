@@ -20,8 +20,53 @@ def mode() -> str:
     return value
 
 
-def _proxy_summary() -> str:
+def _windows_registry_proxies() -> dict[str, str]:
+    if os.name != "nt":
+        return {}
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+        ) as key:
+            enabled, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            if not enabled:
+                return {}
+            server, _ = winreg.QueryValueEx(key, "ProxyServer")
+    except (ImportError, OSError, TypeError):
+        return {}
+    if not isinstance(server, str) or not server.strip():
+        return {}
+    values: dict[str, str] = {}
+    for item in server.split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" in item:
+            scheme, value = item.split("=", 1)
+            scheme = scheme.strip().lower()
+        else:
+            scheme, value = "http", item
+        value = value.strip()
+        if scheme in {"http", "https", "all"} and value:
+            values[scheme] = value if "://" in value else f"http://{value}"
+    if "http" in values and "https" not in values:
+        values["https"] = values["http"]
+    if "https" in values and "http" not in values:
+        values["http"] = values["https"]
+    return values
+
+
+def _effective_proxies() -> dict[str, str]:
     proxies = request.getproxies()
+    if any(key.lower() in {"http", "https", "all"} for key in proxies):
+        return proxies
+    return _windows_registry_proxies()
+
+
+def _proxy_summary() -> str:
+    proxies = _effective_proxies()
     if not proxies:
         return "none"
     values = []
@@ -63,7 +108,20 @@ class _SystemOpener:
         return request.urlopen(req, timeout=timeout)
 
 
+class _ConfiguredSystemOpener:
+    def __init__(self, proxies: dict[str, str]):
+        self._opener = request.build_opener(request.ProxyHandler(proxies))
+
+    def open(self, req, *, timeout: float):
+        return self._opener.open(req, timeout=timeout)
+
+
 def _system_opener():
+    proxies = _effective_proxies()
+    if any(key.lower() in {"http", "https", "all"} for key in proxies) and not any(
+        key.lower() in {"http", "https", "all"} for key in request.getproxies()
+    ):
+        return _ConfiguredSystemOpener(proxies)
     return _SystemOpener()
 
 
