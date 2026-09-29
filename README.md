@@ -56,9 +56,9 @@ A_close.bat
 
 撤销脚本会移除代理地址和启动脚本写入的 WebSocket 设置，并恢复它们原来的值，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
 
-Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=direct`。这不会绕过 TUN；Python 只是不再读取 `HTTP_PROXY/HTTPS_PROXY`，实际连接仍由系统 TUN 和你的全局链式规则转发。启动窗口会显示实际网络模式。
+Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=auto`：先尝试直连，让 TUN 和你的全局链式规则接管；直连无法建立时，再尝试 `HTTP_PROXY/HTTPS_PROXY` 环境代理。这样不会主动改变你的链式代理规则，启动窗口会显示实际网络模式。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若明确只走环境代理，可设置 `set BPS_UPSTREAM_MODE=system`。
 
-如果不使用 TUN，而是希望代理程序主动连接一个 HTTP 代理，可以这样启动：
+如果你的链式代理只提供本地 HTTP 代理，而没有让 Python 直连流量进入 TUN，可以这样启动：
 
 ```bat
 set BPS_UPSTREAM_MODE=proxy
