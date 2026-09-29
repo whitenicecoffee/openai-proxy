@@ -11,6 +11,10 @@ from pathlib import Path
 OPENAI_BASE_URL_RE = re.compile(
     r"(?m)^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
+MANAGED_SUPPORTS_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*\n"
+    r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
+)
 
 
 def config_path() -> Path:
@@ -18,6 +22,14 @@ def config_path() -> Path:
     if codex_home:
         return Path(codex_home).expanduser() / "config.toml"
     return Path.home() / ".codex" / "config.toml"
+
+
+def _restore_managed_transport(body: str) -> str:
+    def restore(match: re.Match[str]) -> str:
+        previous = match.group(1)
+        return "" if previous == "absent" else f"supports_websockets = {previous}\n"
+
+    return MANAGED_SUPPORTS_RE.sub(restore, body)
 
 
 def main() -> int:
@@ -28,19 +40,20 @@ def main() -> int:
 
     try:
         current = path.read_text(encoding="utf-8-sig")
-        updated = OPENAI_BASE_URL_RE.sub("", current)
-        if updated != current:
+        normalized = current.replace("\r\n", "\n").replace("\r", "\n")
+        updated = OPENAI_BASE_URL_RE.sub("", normalized)
+        updated = _restore_managed_transport(updated)
+        if updated != normalized:
             newline = "\r\n" if os.name == "nt" else "\n"
-            normalized = updated.replace("\r\n", "\n").replace("\r", "\n")
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", newline="", dir=path.parent, delete=False
             ) as temporary:
-                temporary.write(normalized.replace("\n", newline))
+                temporary.write(updated.replace("\n", newline))
                 temporary_path = Path(temporary.name)
             os.replace(temporary_path, path)
             print(f"[OK] 已撤销代理配置：{path}")
         else:
-            print(f"[OK] 配置中没有 openai_base_url，无需撤销：{path}")
+            print(f"[OK] 配置中没有代理配置，无需撤销：{path}")
     except (OSError, UnicodeError) as error:
         print(f"[ERROR] 无法更新 Codex 配置：{error}", file=sys.stderr)
         return 1
