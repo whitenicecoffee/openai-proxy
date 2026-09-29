@@ -14,6 +14,7 @@ from collections import OrderedDict
 from urllib import error, request
 
 from bps_proxy.upstream import UpstreamError, attachment_url, upload_headers
+from bps_proxy.network import open_url
 
 log = logging.getLogger('bps_proxy')
 CACHE_SIZE = 256
@@ -130,7 +131,7 @@ def upload(session, media_type: str, data: bytes, digest: str) -> str:
     headers['content-type'] = f'multipart/form-data; boundary={boundary}'
     req = request.Request(attachment_url(), data=payload, headers=headers, method='POST')
     try:
-        with request.urlopen(req, timeout=120) as response:
+        with open_url(req, timeout=120) as response:
             raw = response.read(UPLOAD_RESPONSE_BYTES + 1)
     except error.HTTPError as exc:
         status = exc.code if exc.code in (401, 403, 429) else 502
