@@ -1,5 +1,5 @@
 # Codex connection configuration for bps-proxy.
-# Windows users can run A_start.bat to apply this automatically.
+# Windows users can run start.bat to apply this automatically.
 # To return to the official channel, run A_close.bat on Windows or remove
 # the openai_base_url line manually on macOS/Linux.
 # Put this top-level setting before any [table] sections.
