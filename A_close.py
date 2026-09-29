@@ -99,11 +99,15 @@ def _restore_provider(body: str) -> str:
 
 
 def _restore_line(
-    body: str, managed: re.Pattern[str], current: re.Pattern[str]
+    body: str,
+    managed: re.Pattern[str],
+    current: re.Pattern[str],
+    *,
+    remove_unmanaged: bool = True,
 ) -> str:
     match = managed.search(body)
     if match is None:
-        return current.sub("", body)
+        return current.sub("", body) if remove_unmanaged else body
 
     previous = match.group(1)
     updated = body[:match.start()] + body[match.end():]
@@ -138,7 +142,12 @@ def main() -> int:
         updated = current.replace("\r\n", "\n").replace("\r", "\n")
         updated = _restore_provider(updated)
         updated = _remove_all_sections(updated, LEGACY_OPENAI_PROVIDER_RE)
-        updated = _restore_line(updated, MANAGED_MODEL_PROVIDER_RE, MODEL_PROVIDER_RE)
+        updated = _restore_line(
+            updated,
+            MANAGED_MODEL_PROVIDER_RE,
+            MODEL_PROVIDER_RE,
+            remove_unmanaged=False,
+        )
         updated = _restore_line(updated, MANAGED_BASE_RE, BASE_LINE_RE)
         # A manually copied openai-proxy setting should also be removed.
         updated = PROXY_MODEL_PROVIDER_RE.sub("", updated)
