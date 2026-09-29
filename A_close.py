@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import sys
@@ -9,7 +10,11 @@ import tempfile
 from pathlib import Path
 
 OPENAI_BASE_URL_RE = re.compile(
-    r"(?m)^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
+    r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
+)
+MANAGED_BASE_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
 SECTION_HEADER_RE = re.compile(
     r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
@@ -58,7 +63,21 @@ def main() -> int:
     try:
         current = path.read_text(encoding="utf-8-sig")
         normalized = current.replace("\r\n", "\n").replace("\r", "\n")
-        updated = OPENAI_BASE_URL_RE.sub("", normalized)
+        managed_base = MANAGED_BASE_RE.search(normalized)
+        if managed_base:
+            previous_base = managed_base.group(1)
+            without_managed = (
+                normalized[:managed_base.start()] + normalized[managed_base.end():]
+            )
+            updated = OPENAI_BASE_URL_RE.sub("", without_managed)
+            if previous_base != "absent":
+                padding = "=" * (-len(previous_base) % 4)
+                previous_line = base64.urlsafe_b64decode(
+                    previous_base + padding
+                ).decode("utf-8")
+                updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
+        else:
+            updated = OPENAI_BASE_URL_RE.sub("", normalized)
         updated = _restore_managed_transport(updated)
         updated = _remove_empty_openai_provider(updated)
         if updated != normalized:
