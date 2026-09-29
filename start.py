@@ -115,10 +115,14 @@ def configure() -> Path:
     else:
         existing_base = OPENAI_BASE_URL_RE.search(current)
         if existing_base:
-            encoded = base64.urlsafe_b64encode(
-                existing_base.group(0).rstrip("\r\n").encode("utf-8")
-            ).decode("ascii").rstrip("=")
-            previous_base = encoded
+            existing_value = existing_base.group("value").strip().strip("\"'")
+            if existing_value == PROXY_BASE_URL:
+                previous_base = "absent"
+            else:
+                encoded = base64.urlsafe_b64encode(
+                    existing_base.group(0).rstrip("\r\n").encode("utf-8")
+                ).decode("ascii").rstrip("=")
+                previous_base = encoded
         else:
             previous_base = "absent"
 
