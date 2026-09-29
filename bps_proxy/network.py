@@ -28,7 +28,7 @@ def _windows_registry_proxies() -> dict[str, str]:
 
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
-            r"Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
         ) as key:
             enabled, _ = winreg.QueryValueEx(key, "ProxyEnable")
             if not enabled:
