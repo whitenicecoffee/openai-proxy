@@ -60,6 +60,50 @@ A_close.bat
 
 Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，优先使用系统/环境代理；如果环境变量里没有 HTTP/HTTPS 代理，代理还会读取 Windows Internet Settings 的 `ProxyServer`（例如 `127.0.0.1:7897`）。如果上游代理返回 502/503/504 或连接失败，会自动回退到系统/TUN 直连路径。这样保留你的全局链式代理规则，同时兼容代理链临时返回网关错误的情况。启动窗口会显示实际网络模式；如果日志显示 `proxies=none`，说明 Python 没有检测到 7897，不能把它当成已经走了系统代理。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若希望先走 TUN、失败后再走系统代理，可设置 `set BPS_UPSTREAM_MODE=auto`。
 
+### TUN + 全局 7897 端口（尤其是链式代理）
+
+这一节专门给“本机 TUN + 全局代理监听 7897 + 后面还有 VPS/其他出口”的用户。保持下面的拓扑，不要把 Codex 的地址改成 7897：
+
+```
+Codex
+  └─ HTTP/SSE → http://127.0.0.1:8787/v1
+                   └─ bps-proxy 上游出口 → 系统代理 127.0.0.1:7897
+                                             └─ TUN/全局代理 → VPS 或后续链式出口 → 上游
+```
+
+- `8787` 是 Codex 访问的本机代理入口；`7897` 是 bps-proxy 访问外部上游时使用的本地 HTTP 出口。两者职责不同，不能互换。
+- `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，先走系统/环境代理（检测到 7897 时就是这条链），只有网关错误或连接失败才回退到直连/TUN。这样不会拆掉你的 TUN 或链式出口规则。
+- 启动脚本写入的 `NO_PROXY/no_proxy` 只包含 `127.0.0.1、localhost、::1`，作用是让 Codex 到 8787 的本机请求不再绕去 7897；外部上游请求仍按上面的 7897 链路发送。
+- 如果系统代理没有被 Python 检测到，才使用显式出口：
+
+```bat
+set BPS_UPSTREAM_MODE=proxy
+set BPS_UPSTREAM_PROXY=http://127.0.0.1:7897
+start.bat
+```
+这只改变 bps-proxy 的上游出口，不改变 Codex 的 `base_url`。
+
+启动窗口看到下面两类信息，表示链路已按预期建立：
+
+```
+[OK] base_url = http://127.0.0.1:8787/v1
+上游网络模式：system first, direct/TUN fallback (outbound proxies=http=http://127.0.0.1:7897,https=http://127.0.0.1:7897)
+```
+
+可以用下面的日志判断请求是否真正完成：
+
+- `outbound proxies=...7897`：Python 已检测到 7897，外部请求会先交给本地代理。
+- `local request GET /v1/models status=200`：Codex 已绕过系统代理并访问 8787。
+- `local request POST /v1/responses status=200` 后出现 `relay output ... terminal=response.completed`：这一轮上游响应已完成。仅有 HTTP 200 还不等于流式响应完成。
+- 某一轮出现 `terminal=response.failed`，但随后同一对话重试并出现 `response.completed`，通常是一次上游流式重试；持续失败才需要排查出口。
+
+| 现象 | 判断 | 处理 |
+| --- | --- | --- |
+| 502，且日志里没有 `local request` | Codex 仍在使用旧进程或旧环境，没有访问 8787 | 完全退出所有 Codex 进程；重新运行 `start.bat`，再启动 Codex 并新建对话 |
+| 启动日志为 `outbound proxies=none` | Python 没有检测到系统的 7897 | 在 Windows 系统代理中确认 HTTP/HTTPS 都指向 7897，或使用上面的 `BPS_UPSTREAM_MODE=proxy` |
+| 有 `local request`，但随后 `upstream connection failed` / `request failed` | 8787 已通，问题在 7897、TUN 或后续链式出口 | 先确认 7897 本地代理可用，再检查 TUN/全局模式和链式出口顺序；不要修改 Codex 的 8787 地址 |
+| 只想验证本机入口 | 只检查 8787，不代表上游登录态可用 | PowerShell 使用 `curl.exe --noproxy "*" http://127.0.0.1:8787/health` 和 `curl.exe --noproxy "*" http://127.0.0.1:8787/v1/models` |
+
 如果你的链式代理只提供本地 HTTP 代理，而没有让 Python 直连流量进入 TUN，可以这样启动：
 
 ```bat
