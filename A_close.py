@@ -70,27 +70,11 @@ def main() -> int:
     try:
         current = path.read_text(encoding="utf-8-sig")
         normalized = current.replace("\r\n", "\n").replace("\r", "\n")
-        managed_provider = MANAGED_MODEL_PROVIDER_RE.search(normalized)
-        if managed_provider:
-            previous_provider = managed_provider.group(1)
-            without_managed = (
-                normalized[:managed_provider.start()] + normalized[managed_provider.end():]
-            )
-            updated = MODEL_PROVIDER_RE.sub("", without_managed)
-            if previous_provider != "absent":
-                padding = "=" * (-len(previous_provider) % 4)
-                previous_line = base64.urlsafe_b64decode(
-                    previous_provider + padding
-                ).decode("utf-8")
-                updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
-        else:
-            updated = MODEL_PROVIDER_RE.sub("", normalized)
-
-        managed_base = MANAGED_BASE_RE.search(updated)
+        managed_base = MANAGED_BASE_RE.search(normalized)
         if managed_base:
             previous_base = managed_base.group(1)
             without_managed = (
-                updated[:managed_base.start()] + updated[managed_base.end():]
+                normalized[:managed_base.start()] + normalized[managed_base.end():]
             )
             updated = OPENAI_BASE_URL_RE.sub("", without_managed)
             if previous_base != "absent":
@@ -100,7 +84,21 @@ def main() -> int:
                 ).decode("utf-8")
                 updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
         else:
-            updated = OPENAI_BASE_URL_RE.sub("", updated)
+            updated = OPENAI_BASE_URL_RE.sub("", normalized)
+
+        managed_provider = MANAGED_MODEL_PROVIDER_RE.search(updated)
+        if managed_provider:
+            previous_provider = managed_provider.group(1)
+            without_managed = (
+                updated[:managed_provider.start()] + updated[managed_provider.end():]
+            )
+            updated = MODEL_PROVIDER_RE.sub("", without_managed)
+            if previous_provider != "absent":
+                padding = "=" * (-len(previous_provider) % 4)
+                previous_line = base64.urlsafe_b64decode(
+                    previous_provider + padding
+                ).decode("utf-8")
+                updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
 
         updated = _restore_managed_transport(updated)
         updated = _remove_empty_openai_provider(updated)
