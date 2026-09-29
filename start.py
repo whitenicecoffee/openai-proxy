@@ -274,7 +274,10 @@ def main() -> int:
     print("[OK] Codex WebSocket 已关闭，使用 HTTP/SSE。")
     print("[OK] Codex 本机地址绕过系统代理：127.0.0.1, localhost, ::1")
     if os.name == "nt":
-        print("[提示] 上游请求仍按 BPS_UPSTREAM_MODE 走系统代理；请在新终端启动 Codex 以读取 NO_PROXY。")
+        if not no_proxy_persisted:
+            print("[WARN] 无法写入 Windows 用户 NO_PROXY；请在启动 Codex 前手动设置 NO_PROXY=127.0.0.1,localhost,::1。")
+        else:
+            print("[提示] 上游请求仍按 BPS_UPSTREAM_MODE 走系统代理；请在新终端启动 Codex 以读取 NO_PROXY。")
     print("正在启动 bps-proxy；按 Ctrl+C 停止。")
     from bps_proxy.__main__ import main as proxy_main
 
