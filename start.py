@@ -246,9 +246,9 @@ def configure() -> Path:
     updated = (
         MANAGED_MODEL_PROVIDER_MARKER.format(previous=previous_provider)
         + "\n"
+        + f'model_provider = "{PROXY_PROVIDER}"\n'
         + MANAGED_NO_PROXY_MARKER.format(previous=previous_no_proxy)
         + "\n"
-        + f'model_provider = "{PROXY_PROVIDER}"\n'
         + (
             MANAGED_BASE_MARKER.format(previous=previous_base) + "\n"
             if previous_base != "absent"
