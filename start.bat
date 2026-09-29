@@ -10,7 +10,7 @@ if exist .venv\Scripts\python.exe (
     set "PYTHON=python"
 )
 
-if not defined BPS_UPSTREAM_MODE set "BPS_UPSTREAM_MODE=auto"
+if not defined BPS_UPSTREAM_MODE set "BPS_UPSTREAM_MODE=system"
 "%PYTHON%" "%~dp0start.py" %*
 set "exit_code=%errorlevel%"
 
