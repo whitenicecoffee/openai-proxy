@@ -113,7 +113,8 @@ def configure() -> Path:
             previous_base = encoded
         else:
             previous_base = "absent"
-    body = OPENAI_BASE_URL_RE.sub("", current)
+    body = MANAGED_BASE_RE.sub("", current)
+    body = OPENAI_BASE_URL_RE.sub("", body)
     body = _provider_transport_config(body)
     updated = (
         MANAGED_BASE_MARKER.format(previous=previous_base)
