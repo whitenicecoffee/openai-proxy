@@ -43,13 +43,12 @@ Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` �
 
 ### Windows 推荐流程
 
-1. 双击 `A_start.bat`，一键写入 Codex 的代理地址。
-2. 双击 `start.bat`，启动本地代理服务并保持窗口运行。
-3. 重启 Codex 并新建对话。
+1. 双击 `start.bat`。它会自动写入 Codex 配置，然后启动本地代理服务。
+2. 重启 Codex 并新建对话。
 
-配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。`A_start.bat` 会自动去重并保留其他配置。
+配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置。
 
-需要恢复官方通道时，先停止代理，再运行：
+如果只想重新写入配置、不启动代理，可以运行 `A_start.bat`。需要恢复官方通道时，先停止代理，再运行：
 
 ```bat
 A_close.bat
