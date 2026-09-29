@@ -134,11 +134,24 @@ def _previous_line(body: str, managed: re.Pattern[str], current: re.Pattern[str]
     return "absent"
 
 
+def _previous_base(body: str) -> str:
+    managed = MANAGED_BASE_RE.search(body)
+    if managed:
+        return managed.group(1)
+    existing = BASE_LINE_RE.search(body)
+    if existing is None:
+        return "absent"
+    value = existing.group("value").strip().strip("\"'")
+    if value == PROXY_BASE_URL:
+        return "absent"
+    return _b64encode(existing.group(0).rstrip("\r\n"))
+
+
 def configure() -> Path:
     path = config_path()
     current = read_config(path).replace("\r\n", "\n").replace("\r", "\n")
 
-    previous_base = _previous_line(current, MANAGED_BASE_RE, BASE_LINE_RE)
+    previous_base = _previous_base(current)
     previous_provider = _previous_line(
         current, MANAGED_MODEL_PROVIDER_RE, MODEL_PROVIDER_RE
     )
@@ -173,8 +186,11 @@ def configure() -> Path:
         MANAGED_MODEL_PROVIDER_MARKER.format(previous=previous_provider)
         + "\n"
         + f'model_provider = "{PROXY_PROVIDER}"\n'
-        + MANAGED_BASE_MARKER.format(previous=previous_base)
-        + "\n"
+        + (
+            MANAGED_BASE_MARKER.format(previous=previous_base) + "\n"
+            if previous_base != "absent"
+            else ""
+        )
         + body
         + managed_provider_block
     )
