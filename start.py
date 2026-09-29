@@ -61,7 +61,7 @@ def _provider_transport_config(body: str) -> str:
     if provider is None:
         suffix = body.rstrip("\n")
         if suffix:
-            suffix += "\n\n"
+            suffix += "\n"
         return (
             suffix
             + "[model_providers.openai]\n"
