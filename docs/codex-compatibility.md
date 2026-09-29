@@ -40,7 +40,7 @@ tools/import_model_catalog.py SOURCE --output NEW_FILE 可重现白名单导入�
 同名同定义去重，冲突声明拒绝；user/assistant additional_tools 不授权。顶层空 tools 保留旧续接语义，Lite 显式空目录撤销缓存。
 当前请求 tool_choice=none 仅禁用本次工具；缓存仍按账号和会话隔离。additional_tools 解析后不原样发送给 BPS。
 
-Windows 一键配置会在 `[model_providers.openai]` 写入 `supports_websockets = false`，直接使用 HTTP/SSE，避免旧版 Codex 反复预连接 WebSocket；A_close 会恢复原值。未关闭 WebSocket 的客户端仍可通过 GET /responses 的 426 回退 HTTP/SSE。
+Windows 一键配置会选择内置 `openai` provider，并在 `[model_providers.openai]` 写入 `supports_websockets = false`，直接使用 HTTP/SSE，避免旧版 Codex 反复预连接 WebSocket；A_close 会恢复原值。未关闭 WebSocket 的客户端仍可通过 GET /responses 的 426 回退 HTTP/SSE。
 不创建 BPS 上游 WebSocket，不在提交后跨传输重放生成请求。
 不实现 previous_response_id 服务端会话存储；客户端继续发送完整或已压缩的历史。
 
