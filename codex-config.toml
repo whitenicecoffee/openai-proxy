@@ -1,10 +1,11 @@
 # Codex connection configuration for bps-proxy.
 # Windows users can run start.bat to apply this automatically.
 # To return to the official channel, run A_close.bat on Windows or remove
-# both the openai_base_url and supports_websockets lines manually on macOS/Linux.
+# the model_provider, openai_base_url, and supports_websockets lines manually on macOS/Linux.
 # Put this top-level setting before any [table] sections.
 # Restart Codex and create a new conversation after changing it.
 
+model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/v1"
 
 [model_providers.openai]
