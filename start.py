@@ -49,6 +49,7 @@ NO_PROXY_MARKER_RE = re.compile(
 )
 MANAGED_NO_PROXY_MARKER = "# bps-proxy: managed NO_PROXY previous={previous}"
 LOCAL_PROXY_BYPASS = ("127.0.0.1", "localhost", "::1")
+LAST_NO_PROXY_PERSISTED = False
 
 
 def _append_local_bypass(value: str) -> str:
@@ -222,6 +223,7 @@ def _previous_base(body: str) -> str:
 
 
 def configure() -> Path:
+    global LAST_NO_PROXY_PERSISTED
     path = config_path()
     current = read_config(path).replace("\r\n", "\n").replace("\r", "\n")
 
@@ -231,7 +233,7 @@ def configure() -> Path:
     )
     no_proxy_marker = NO_PROXY_MARKER_RE.search(current)
     previous_no_proxy = no_proxy_marker.group(1) if no_proxy_marker else None
-    previous_no_proxy, no_proxy_persisted = ensure_local_proxy_bypass(previous_no_proxy)
+    previous_no_proxy, LAST_NO_PROXY_PERSISTED = ensure_local_proxy_bypass(previous_no_proxy)
 
     body = MANAGED_BASE_RE.sub("", current)
     body = NO_PROXY_MARKER_RE.sub("", body)
@@ -291,7 +293,7 @@ def main() -> int:
     print("[OK] Codex WebSocket 已关闭，使用 HTTP/SSE。")
     print("[OK] Codex 本机地址绕过系统代理：127.0.0.1, localhost, ::1")
     if os.name == "nt":
-        if not no_proxy_persisted:
+        if not LAST_NO_PROXY_PERSISTED:
             print("[WARN] 无法写入 Windows 用户 NO_PROXY；请在启动 Codex 前手动设置 NO_PROXY=127.0.0.1,localhost,::1。")
         else:
             print("[提示] 上游请求仍按 BPS_UPSTREAM_MODE 走系统代理；请在新终端启动 Codex 以读取 NO_PROXY。")
