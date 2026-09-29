@@ -26,6 +26,10 @@ def _proxy_summary() -> str:
         return "none"
     values = []
     for scheme, value in sorted(proxies.items()):
+        # urllib exposes NO_PROXY/no_proxy as a pseudo-scheme named "no".
+        # It is a bypass list, not an outbound proxy.
+        if scheme.lower() in {"no", "no_proxy"}:
+            continue
         try:
             parsed = parse.urlsplit(value)
             host = parsed.hostname or "?"
