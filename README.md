@@ -43,11 +43,11 @@ Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` �
 
 ### Windows 推荐流程
 
-1. 双击 \`A_start.bat\`，一键写入 Codex 的代理地址。
-2. 双击 \`start.bat\`，启动本地代理服务并保持窗口运行。
+1. 双击 `A_start.bat`，一键写入 Codex 的代理地址。
+2. 双击 `start.bat`，启动本地代理服务并保持窗口运行。
 3. 重启 Codex 并新建对话。
 
-配置文件的位置是 \`%CODEX_HOME%\\config.toml\`；未设置 \`CODEX_HOME\` 时使用 \`%USERPROFILE%\\.codex\\config.toml\`。\`A_start.bat\` 会自动去重并保留其他配置。
+配置文件的位置是 `%CODEX_HOME%\\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\\.codex\\config.toml`。`A_start.bat` 会自动去重并保留其他配置。
 
 需要恢复官方通道时，先停止代理，再运行：
 
@@ -55,11 +55,11 @@ Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` �
 A_close.bat
 ```
 
-撤销脚本只移除 \`openai_base_url\`，不会覆盖配置文件中的其他设置。\`start.bat\` 只负责启动代理，\`A_start.bat\` 和 \`A_close.bat\` 负责配置切换。
+撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。`start.bat` 只负责启动代理，`A_start.bat` 和 `A_close.bat` 负责配置切换。
 
 ### macOS / Linux
 
-先手动把下面一行放入 \`$CODEX_HOME/config.toml\`（未设置时为 \`~/.codex/config.toml\`），再启动服务：
+先手动把下面一行放入 `$CODEX_HOME/config.toml`（未设置时为 `~/.codex/config.toml`），再启动服务：
 
 ```toml
 openai_base_url = "http://127.0.0.1:8787/v1"
