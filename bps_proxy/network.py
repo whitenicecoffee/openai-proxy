@@ -45,7 +45,7 @@ def description() -> str:
     if selected == "proxy":
         proxy = os.environ.get("BPS_UPSTREAM_PROXY", "").strip()
         return "proxy (configured)" if proxy else "proxy (missing BPS_UPSTREAM_PROXY)"
-    return f"system (urllib proxies={_proxy_summary()})"
+    return f"system first, direct/TUN fallback (urllib proxies={_proxy_summary()})"
 
 
 def _direct_opener():
@@ -62,10 +62,49 @@ def _proxy_opener(proxy: str):
     )
 
 
+_GATEWAY_STATUSES = frozenset({502, 503, 504})
+
+
+def _close_error(exc) -> None:
+    try:
+        exc.close()
+    except Exception:
+        pass
+
+
+def _system_then_direct(req, *, timeout: float):
+    """Prefer the configured system proxy, then let TUN routing recover it.
+
+    A chained proxy can return a gateway error even though the host is reachable
+    through the OS/TUN route. Retrying only those transient gateway failures on a
+    direct opener keeps the system proxy as the first choice without forcing a
+    bypass for normal traffic.
+    """
+    try:
+        return _system_opener().open(req, timeout=timeout)
+    except error.HTTPError as system_error:
+        if system_error.code not in _GATEWAY_STATUSES:
+            raise
+        log.warning(
+            "system proxy gateway failed; trying direct/TUN fallback status=%s",
+            system_error.code,
+        )
+        _close_error(system_error)
+        return _direct_opener().open(req, timeout=timeout)
+    except (error.URLError, OSError) as system_error:
+        log.warning(
+            "system proxy route failed; trying direct/TUN fallback "
+            "exception_type=%s reason_type=%s",
+            type(system_error).__name__,
+            type(getattr(system_error, "reason", None)).__name__,
+        )
+        return _direct_opener().open(req, timeout=timeout)
+
+
 def open_url(req, *, timeout: float):
     selected = mode()
     if selected == "system":
-        return _system_opener().open(req, timeout=timeout)
+        return _system_then_direct(req, timeout=timeout)
     if selected == "direct":
         return _direct_opener().open(req, timeout=timeout)
     if selected == "proxy":
@@ -80,16 +119,13 @@ def open_url(req, *, timeout: float):
     try:
         return _direct_opener().open(req, timeout=timeout)
     except error.HTTPError as direct_error:
-        if direct_error.code not in {502, 503, 504}:
+        if direct_error.code not in _GATEWAY_STATUSES:
             raise
         log.warning(
             "direct upstream gateway failed; trying system proxy status=%s",
             direct_error.code,
         )
-        try:
-            direct_error.close()
-        except Exception:
-            pass
+        _close_error(direct_error)
         return _system_opener().open(req, timeout=timeout)
     except (error.URLError, OSError) as direct_error:
         log.warning(
