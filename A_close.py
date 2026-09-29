@@ -16,6 +16,13 @@ MANAGED_BASE_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
     r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
+MODEL_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*model_provider[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
+)
+MANAGED_MODEL_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"^[ \t]*model_provider[ \t]*=.*(?:\r?\n|$)"
+)
 SECTION_HEADER_RE = re.compile(
     r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
@@ -78,6 +85,21 @@ def main() -> int:
                 updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
         else:
             updated = OPENAI_BASE_URL_RE.sub("", normalized)
+
+        managed_provider = MANAGED_MODEL_PROVIDER_RE.search(updated)
+        if managed_provider:
+            previous_provider = managed_provider.group(1)
+            without_managed = (
+                updated[:managed_provider.start()] + updated[managed_provider.end():]
+            )
+            updated = MODEL_PROVIDER_RE.sub("", without_managed)
+            if previous_provider != "absent":
+                padding = "=" * (-len(previous_provider) % 4)
+                previous_line = base64.urlsafe_b64decode(
+                    previous_provider + padding
+                ).decode("utf-8")
+                updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
+
         updated = _restore_managed_transport(updated)
         updated = _remove_empty_openai_provider(updated)
         if updated != normalized:
