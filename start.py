@@ -10,28 +10,26 @@ import tempfile
 from pathlib import Path
 
 PROXY_BASE_URL = "http://127.0.0.1:8787/v1"
-OPENAI_BASE_URL_RE = re.compile(
-    r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
-)
+PROXY_PROVIDER = "openai-proxy"
+
 SECTION_HEADER_RE = re.compile(
     r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
-OPENAI_PROVIDER_RE = re.compile(
-    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:\r?\n|$)"
+PROVIDER_RE = re.compile(
+    rf"(?m)^[ \t]*\[model_providers\.{re.escape(PROXY_PROVIDER)}\][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
-SUPPORTS_WEBSOCKETS_RE = re.compile(
-    r"(?m)^[ \t]*supports_websockets[ \t]*=[ \t]*(true|false)(?:[ \t]*#.*)?(?:\r?\n|$)"
+LEGACY_OPENAI_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:#.*)?(?:\r?\n|$)"
 )
-MANAGED_SUPPORTS_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*(?:\r?\n)"
-    r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
+BASE_LINE_RE = re.compile(
+    r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
 )
-MANAGED_MARKER = "# bps-proxy: managed supports_websockets previous={previous}"
 MANAGED_BASE_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
     r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
 MANAGED_BASE_MARKER = "# bps-proxy: managed openai_base_url previous={previous}"
+
 MODEL_PROVIDER_RE = re.compile(
     r"(?m)^[ \t]*model_provider[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
 )
@@ -40,6 +38,11 @@ MANAGED_MODEL_PROVIDER_RE = re.compile(
     r"^[ \t]*model_provider[ \t]*=.*(?:\r?\n|$)"
 )
 MANAGED_MODEL_PROVIDER_MARKER = "# bps-proxy: managed model_provider previous={previous}"
+
+MANAGED_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed provider previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
+)
+MANAGED_PROVIDER_MARKER = "# bps-proxy: managed provider previous={previous}"
 
 
 def config_path() -> Path:
@@ -69,89 +72,111 @@ def write_config(path: Path, content: str) -> None:
     os.replace(temporary_path, path)
 
 
-def _provider_transport_config(body: str) -> str:
-    """Force HTTP/SSE while remembering the user's previous provider value."""
-    provider = OPENAI_PROVIDER_RE.search(body)
-    if provider is None:
-        suffix = body.rstrip("\n")
-        if suffix:
-            suffix += "\n"
-        return (
-            suffix
-            + "[model_providers.openai]\n"
-            + MANAGED_MARKER.format(previous="absent")
-            + "\n"
-            + "supports_websockets = false\n"
-        )
+def _b64encode(value: str) -> str:
+    return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
 
-    next_section = SECTION_HEADER_RE.search(body, provider.end())
-    section_end = next_section.start() if next_section else len(body)
-    section = body[provider.end():section_end]
 
-    managed = MANAGED_SUPPORTS_RE.search(section)
+def _b64decode(value: str) -> str:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding).decode("utf-8")
+
+
+def _section_span(body: str, header: re.Pattern[str]) -> tuple[int, int] | None:
+    match = header.search(body)
+    if match is None:
+        return None
+    next_section = SECTION_HEADER_RE.search(body, match.end())
+    end = next_section.start() if next_section else len(body)
+    return match.start(), end
+
+
+def _remove_section(
+    body: str, header: re.Pattern[str]
+) -> tuple[str, str | None]:
+    span = _section_span(body, header)
+    if span is None:
+        return body, None
+    start, end = span
+    return body[:start] + body[end:], body[start:end]
+
+
+def _remove_all_sections(body: str, header: re.Pattern[str]) -> str:
+    while header.search(body):
+        body, _ = _remove_section(body, header)
+    return body
+
+
+def _provider_block(body: str) -> tuple[str, str]:
+    """Remove our provider block and return (body, previous block token)."""
+    managed = MANAGED_PROVIDER_RE.search(body)
     if managed:
-        previous = managed.group(1)
-        section = section[:managed.start()] + section[managed.end():]
-    else:
-        existing = SUPPORTS_WEBSOCKETS_RE.search(section)
-        previous = existing.group(1) if existing else "absent"
-        if existing:
-            section = section[:existing.start()] + section[existing.end():]
+        provider = PROVIDER_RE.search(body, managed.end())
+        if provider is not None:
+            next_section = SECTION_HEADER_RE.search(body, provider.end())
+            end = next_section.start() if next_section else len(body)
+            return (
+                body[:managed.start()] + body[end:],
+                managed.group(1),
+            )
+        return body[:managed.start()] + body[managed.end():], "absent"
 
-    managed_lines = (
-        MANAGED_MARKER.format(previous=previous)
-        + "\n"
-        + "supports_websockets = false\n"
-    )
-    return body[:provider.end()] + managed_lines + section + body[section_end:]
+    body, block = _remove_section(body, PROVIDER_RE)
+    return body, _b64encode(block) if block is not None else "absent"
+
+
+def _previous_line(body: str, managed: re.Pattern[str], current: re.Pattern[str]) -> str:
+    match = managed.search(body)
+    if match:
+        return match.group(1)
+    existing = current.search(body)
+    if existing:
+        return _b64encode(existing.group(0).rstrip("\r\n"))
+    return "absent"
 
 
 def configure() -> Path:
     path = config_path()
-    current = read_config(path)
-    managed_base = MANAGED_BASE_RE.search(current)
-    if managed_base:
-        previous_base = managed_base.group(1)
-    else:
-        existing_base = OPENAI_BASE_URL_RE.search(current)
-        if existing_base:
-            existing_value = existing_base.group("value").strip().strip("\"'")
-            if existing_value == PROXY_BASE_URL:
-                previous_base = "absent"
-            else:
-                encoded = base64.urlsafe_b64encode(
-                    existing_base.group(0).rstrip("\r\n").encode("utf-8")
-                ).decode("ascii").rstrip("=")
-                previous_base = encoded
-        else:
-            previous_base = "absent"
+    current = read_config(path).replace("\r\n", "\n").replace("\r", "\n")
 
-    managed_provider = MANAGED_MODEL_PROVIDER_RE.search(current)
-    if managed_provider:
-        previous_provider = managed_provider.group(1)
-    else:
-        existing_provider = MODEL_PROVIDER_RE.search(current)
-        if existing_provider:
-            encoded = base64.urlsafe_b64encode(
-                existing_provider.group(0).rstrip("\r\n").encode("utf-8")
-            ).decode("ascii").rstrip("=")
-            previous_provider = encoded
-        else:
-            previous_provider = "absent"
+    previous_base = _previous_line(current, MANAGED_BASE_RE, BASE_LINE_RE)
+    previous_provider = _previous_line(
+        current, MANAGED_MODEL_PROVIDER_RE, MODEL_PROVIDER_RE
+    )
 
     body = MANAGED_BASE_RE.sub("", current)
-    body = OPENAI_BASE_URL_RE.sub("", body)
+    body = BASE_LINE_RE.sub("", body)
     body = MANAGED_MODEL_PROVIDER_RE.sub("", body)
     body = MODEL_PROVIDER_RE.sub("", body)
-    body = _provider_transport_config(body)
+
+    # The earlier release incorrectly created [model_providers.openai].
+    # That table overrides a reserved built-in ID and must be removed so an
+    # upgraded configuration can start successfully.
+    body = _remove_all_sections(body, LEGACY_OPENAI_PROVIDER_RE)
+
+    body, previous_proxy_provider = _provider_block(body)
+
+    managed_provider_block = (
+        MANAGED_PROVIDER_MARKER.format(previous=previous_proxy_provider)
+        + "\n"
+        + f"[model_providers.{PROXY_PROVIDER}]\n"
+        + 'name = "OpenAI Proxy"\n'
+        + f'base_url = "{PROXY_BASE_URL}"\n'
+        + 'wire_api = "responses"\n'
+        + "requires_openai_auth = true\n"
+        + "supports_websockets = false\n"
+    )
+
+    body = body.strip("\n")
+    if body:
+        body += "\n\n"
     updated = (
         MANAGED_MODEL_PROVIDER_MARKER.format(previous=previous_provider)
         + "\n"
-        + 'model_provider = "openai"\n'
+        + f'model_provider = "{PROXY_PROVIDER}"\n'
         + MANAGED_BASE_MARKER.format(previous=previous_base)
         + "\n"
-        + f'openai_base_url = "{PROXY_BASE_URL}"\n'
-        + body.lstrip("\r\n")
+        + body
+        + managed_provider_block
     )
     write_config(path, updated)
     return path
@@ -160,16 +185,17 @@ def configure() -> Path:
 def main() -> int:
     try:
         path = configure()
-    except (OSError, UnicodeError) as error:
+    except (OSError, UnicodeError, ValueError) as error:
         print(f"[ERROR] 无法写入 Codex 配置：{error}", file=sys.stderr)
         return 1
 
     print(f"[OK] 已完成代理配置：{path}")
-    print(f"[OK] openai_base_url = {PROXY_BASE_URL}")
-    print("[OK] model_provider = openai")
+    print(f"[OK] model_provider = {PROXY_PROVIDER}")
+    print(f"[OK] base_url = {PROXY_BASE_URL}")
     print("[OK] Codex WebSocket 已关闭，使用 HTTP/SSE。")
     print("正在启动 bps-proxy；按 Ctrl+C 停止。")
     from bps_proxy.__main__ import main as proxy_main
+
     proxy_main()
     return 0
 
