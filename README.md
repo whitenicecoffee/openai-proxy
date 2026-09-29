@@ -91,7 +91,7 @@ supports_websockets = false
 ./start.sh
 ```
 
-回到官方通道时删除这两项，再重启 Codex。
+回到官方通道时删除这三项，再重启 Codex。
 
 也可以：
 
@@ -149,6 +149,7 @@ curl http://127.0.0.1:8787/health
 在用户配置 `~/.codex/config.toml` 顶层加一行，放在所有 `[table]` 之前；设置了 `CODEX_HOME` 时修改对应目录的 `config.toml`：
 
 ```toml
+model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/v1"
 
 [model_providers.openai]
