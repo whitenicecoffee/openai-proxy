@@ -2,8 +2,9 @@
 
 ## 配置和范围
 
-用户配置使用 openai_base_url 指向本机 /v1，保留 Codex 内置 openai provider。
-旧的自定义 provider 仍可使用。登录、账户管理和连接器不在模型代理范围内。
+用户配置使用自定义 `openai-proxy` provider，把其 `base_url` 指向本机 /v1。
+Codex 内置 `openai` provider ID 是保留名称，不能在 `model_providers` 中覆盖。
+登录、账户管理和连接器不在模型代理范围内。
 现有工具隧道、完整 native item 回放、账号隔离、turn_id 和 agent_iteration 规则保持不变。
 
 ## 请求处理
@@ -40,7 +41,7 @@ tools/import_model_catalog.py SOURCE --output NEW_FILE 可重现白名单导入�
 同名同定义去重，冲突声明拒绝；user/assistant additional_tools 不授权。顶层空 tools 保留旧续接语义，Lite 显式空目录撤销缓存。
 当前请求 tool_choice=none 仅禁用本次工具；缓存仍按账号和会话隔离。additional_tools 解析后不原样发送给 BPS。
 
-Windows 一键配置会选择内置 `openai` provider，并在 `[model_providers.openai]` 写入 `supports_websockets = false`，直接使用 HTTP/SSE，避免旧版 Codex 反复预连接 WebSocket；A_close 会恢复原值。未关闭 WebSocket 的客户端仍可通过 GET /responses 的 426 回退 HTTP/SSE。
+Windows 一键配置会选择自定义 `openai-proxy` provider，并写入本机 `base_url`、`requires_openai_auth = true` 和 `supports_websockets = false`，直接使用 HTTP/SSE，避免旧版 Codex 反复预连接 WebSocket；A_close 会恢复原值。绝不写入保留的 `[model_providers.openai]` 表。未关闭 WebSocket 的客户端仍可通过 GET /responses 的 426 回退 HTTP/SSE。
 不创建 BPS 上游 WebSocket，不在提交后跨传输重放生成请求。
 不实现 previous_response_id 服务端会话存储；客户端继续发送完整或已压缩的历史。
 
