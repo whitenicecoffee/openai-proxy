@@ -13,6 +13,7 @@ from typing import Iterator
 from urllib import error, request
 
 from bps_proxy.auth import ChatGPTSession
+from bps_proxy.network import open_url
 from bps_proxy.wire import UPSTREAM_URL
 
 log = logging.getLogger("bps_proxy")
@@ -234,7 +235,7 @@ def iter_events(session: ChatGPTSession, body: dict, *, max_event_bytes: int | N
     started_at = time.monotonic()
     try:
         try:
-            response = request.urlopen(req, timeout=UPSTREAM_TIMEOUT)
+            response = open_url(req, timeout=UPSTREAM_TIMEOUT)
         except error.HTTPError as exc:
             raise UpstreamError(exc.code, _http_error_message(exc)) from exc
         except (TimeoutError, socket.timeout) as exc:
