@@ -90,7 +90,7 @@ supports_websockets = false
 ./start.sh
 ```
 
-回到官方通道时删除这行，再重启 Codex。
+回到官方通道时删除这两项，再重启 Codex。
 
 也可以：
 
@@ -149,6 +149,9 @@ curl http://127.0.0.1:8787/health
 
 ```toml
 openai_base_url = "http://127.0.0.1:8787/v1"
+
+[model_providers.openai]
+supports_websockets = false
 ```
 
 这使用 Codex 内置的 `openai` provider，不需要另建 provider。`supports_websockets = false` 用来跳过会反复失败的 WebSocket 预连接，改走代理已经支持的 HTTP/SSE；原有模型和推理档位设置可以保留。实际可用模型见下方目录。
@@ -157,7 +160,7 @@ openai_base_url = "http://127.0.0.1:8787/v1"
 
 保存后重启 Codex 客户端并新建对话，使连接地址与模型目录重新加载。该地址应放在用户配置中，项目内的 `.codex/config.toml` 不适合配置连接地址。代理没启动时，Codex 会连不上。
 
-要回到官方通道，删掉这一行 `openai_base_url`，再重启 Codex。
+要回到官方通道，删掉 `openai_base_url` 和 `supports_websockets` 这两项（或运行 Windows 的 `A_close.bat`），再重启 Codex。
 
 ### 确认请求经过代理
 
