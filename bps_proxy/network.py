@@ -17,7 +17,7 @@ log = logging.getLogger("bps_proxy")
 
 
 def mode() -> str:
-    default = "auto" if os.name == "nt" else "system"
+    default = "system"
     value = os.environ.get("BPS_UPSTREAM_MODE", default).strip().lower()
     if value not in MODES:
         raise ValueError(
