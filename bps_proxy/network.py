@@ -14,7 +14,8 @@ MODES = frozenset({"system", "direct", "proxy"})
 
 
 def mode() -> str:
-    value = os.environ.get("BPS_UPSTREAM_MODE", "system").strip().lower()
+    default = "direct" if os.name == "nt" else "system"
+    value = os.environ.get("BPS_UPSTREAM_MODE", default).strip().lower()
     if value not in MODES:
         raise ValueError(
             f"BPS_UPSTREAM_MODE must be one of {', '.join(sorted(MODES))}"
