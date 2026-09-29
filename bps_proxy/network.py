@@ -52,8 +52,15 @@ def _direct_opener():
     return request.build_opener(request.ProxyHandler({}))
 
 
+class _SystemOpener:
+    def open(self, req, *, timeout: float):
+        # Keep the default urllib entry point so callers and tests can observe
+        # the same environment-proxy behavior as a normal urllib request.
+        return request.urlopen(req, timeout=timeout)
+
+
 def _system_opener():
-    return request.build_opener()
+    return _SystemOpener()
 
 
 def _proxy_opener(proxy: str):
