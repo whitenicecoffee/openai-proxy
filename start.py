@@ -64,8 +64,11 @@ def _append_local_bypass(value: str) -> str:
 
 
 def _read_user_no_proxy() -> str:
+    current = os.environ.get("NO_PROXY", "")
+    if current:
+        return current
     if os.name != "nt":
-        return os.environ.get("NO_PROXY", "")
+        return current
     try:
         import winreg
 
@@ -73,7 +76,7 @@ def _read_user_no_proxy() -> str:
             value, _ = winreg.QueryValueEx(key, "NO_PROXY")
             return str(value or "")
     except (ImportError, OSError, TypeError):
-        return os.environ.get("NO_PROXY", "")
+        return current
 
 
 def _write_user_no_proxy(value: str) -> bool:
