@@ -9,8 +9,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-OPENAI_BASE_URL_RE = re.compile(
-    r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
+PROXY_PROVIDER = "openai-proxy"
+
+SECTION_HEADER_RE = re.compile(
+    r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
+)
+PROVIDER_RE = re.compile(
+    rf"(?m)^[ \t]*\[model_providers\.{re.escape(PROXY_PROVIDER)}\][ \t]*(?:#.*)?(?:\r?\n|$)"
+)
+LEGACY_OPENAI_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:\r?\n|$)"
+)
+BASE_LINE_RE = re.compile(
+    r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?:.*?)(?:\r?\n|$)"
 )
 MANAGED_BASE_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
@@ -23,15 +34,11 @@ MANAGED_MODEL_PROVIDER_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
     r"^[ \t]*model_provider[ \t]*=.*(?:\r?\n|$)"
 )
-SECTION_HEADER_RE = re.compile(
-    r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
+PROXY_MODEL_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*model_provider[ \t]*=[ \t]*[\"']openai-proxy[\"'][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
-OPENAI_PROVIDER_RE = re.compile(
-    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:\r?\n|$)"
-)
-MANAGED_SUPPORTS_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*(?:\r?\n)"
-    r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
+MANAGED_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed provider previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
 )
 
 
@@ -42,23 +49,82 @@ def config_path() -> Path:
     return Path.home() / ".codex" / "config.toml"
 
 
-def _restore_managed_transport(body: str) -> str:
-    def restore(match: re.Match[str]) -> str:
-        previous = match.group(1)
-        return "" if previous == "absent" else f"supports_websockets = {previous}\n"
+def _section_span(body: str, header: re.Pattern[str]) -> tuple[int, int] | None:
+    match = header.search(body)
+    if match is None:
+        return None
+    next_section = SECTION_HEADER_RE.search(body, match.end())
+    end = next_section.start() if next_section else len(body)
+    return match.start(), end
 
-    return MANAGED_SUPPORTS_RE.sub(restore, body)
+
+def _remove_section(body: str, header: re.Pattern[str]) -> tuple[str, str | None]:
+    span = _section_span(body, header)
+    if span is None:
+        return body, None
+    start, end = span
+    return body[:start] + body[end:], body[start:end]
 
 
-def _remove_empty_openai_provider(body: str) -> str:
-    provider = OPENAI_PROVIDER_RE.search(body)
-    if provider is None:
-        return body
-    next_section = SECTION_HEADER_RE.search(body, provider.end())
-    section_end = next_section.start() if next_section else len(body)
-    if not body[provider.end():section_end].strip():
-        return body[:provider.start()] + body[section_end:]
+def _remove_all_sections(body: str, header: re.Pattern[str]) -> str:
+    while header.search(body):
+        body, _ = _remove_section(body, header)
     return body
+
+
+def _b64decode(value: str) -> str:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding).decode("utf-8")
+
+
+def _restore_provider(body: str) -> str:
+    managed = MANAGED_PROVIDER_RE.search(body)
+    if managed:
+        provider = PROVIDER_RE.search(body, managed.end())
+        if provider is not None:
+            next_section = SECTION_HEADER_RE.search(body, provider.end())
+            end = next_section.start() if next_section else len(body)
+            updated = body[:managed.start()] + body[end:]
+        else:
+            updated = body[:managed.start()] + body[managed.end():]
+        previous = managed.group(1)
+        if previous != "absent":
+            restored = _b64decode(previous).rstrip("\r\n")
+            updated = restored + "\n" + updated.lstrip("\r\n")
+        return updated
+
+    # Also clean a manually copied block from the old release.
+    body, _ = _remove_section(body, PROVIDER_RE)
+    return body
+
+
+def _restore_line(
+    body: str, managed: re.Pattern[str], current: re.Pattern[str]
+) -> str:
+    match = managed.search(body)
+    if match is None:
+        return current.sub("", body)
+
+    previous = match.group(1)
+    updated = body[:match.start()] + body[match.end():]
+    if previous != "absent":
+        restored = _b64decode(previous).rstrip("\r\n")
+        updated = restored + "\n" + updated.lstrip("\r\n")
+    return updated
+
+
+def _write_config(path: Path, content: str) -> None:
+    newline = "\r\n" if os.name == "nt" else "\n"
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.strip("\n")
+    if normalized:
+        normalized += "\n"
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", newline="", dir=path.parent, delete=False
+    ) as temporary:
+        temporary.write(normalized.replace("\n", newline))
+        temporary_path = Path(temporary.name)
+    os.replace(temporary_path, path)
 
 
 def main() -> int:
@@ -69,51 +135,21 @@ def main() -> int:
 
     try:
         current = path.read_text(encoding="utf-8-sig")
-        normalized = current.replace("\r\n", "\n").replace("\r", "\n")
-        managed_base = MANAGED_BASE_RE.search(normalized)
-        if managed_base:
-            previous_base = managed_base.group(1)
-            without_managed = (
-                normalized[:managed_base.start()] + normalized[managed_base.end():]
-            )
-            updated = OPENAI_BASE_URL_RE.sub("", without_managed)
-            if previous_base != "absent":
-                padding = "=" * (-len(previous_base) % 4)
-                previous_line = base64.urlsafe_b64decode(
-                    previous_base + padding
-                ).decode("utf-8")
-                updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
-        else:
-            updated = OPENAI_BASE_URL_RE.sub("", normalized)
+        updated = current.replace("\r\n", "\n").replace("\r", "\n")
+        updated = _restore_provider(updated)
+        updated = _remove_all_sections(updated, LEGACY_OPENAI_PROVIDER_RE)
+        updated = _restore_line(updated, MANAGED_MODEL_PROVIDER_RE, MODEL_PROVIDER_RE)
+        updated = _restore_line(updated, MANAGED_BASE_RE, BASE_LINE_RE)
+        # A manually copied openai-proxy setting should also be removed.
+        updated = PROXY_MODEL_PROVIDER_RE.sub("", updated)
+        updated = updated.strip("\n")
 
-        managed_provider = MANAGED_MODEL_PROVIDER_RE.search(updated)
-        if managed_provider:
-            previous_provider = managed_provider.group(1)
-            without_managed = (
-                updated[:managed_provider.start()] + updated[managed_provider.end():]
-            )
-            updated = MODEL_PROVIDER_RE.sub("", without_managed)
-            if previous_provider != "absent":
-                padding = "=" * (-len(previous_provider) % 4)
-                previous_line = base64.urlsafe_b64decode(
-                    previous_provider + padding
-                ).decode("utf-8")
-                updated = previous_line.rstrip("\r\n") + "\n" + updated.lstrip("\r\n")
-
-        updated = _restore_managed_transport(updated)
-        updated = _remove_empty_openai_provider(updated)
-        if updated != normalized:
-            newline = "\r\n" if os.name == "nt" else "\n"
-            with tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8", newline="", dir=path.parent, delete=False
-            ) as temporary:
-                temporary.write(updated.replace("\n", newline))
-                temporary_path = Path(temporary.name)
-            os.replace(temporary_path, path)
+        if updated != current.replace("\r\n", "\n").replace("\r", "\n").strip("\n"):
+            _write_config(path, updated)
             print(f"[OK] 已撤销代理配置：{path}")
         else:
             print(f"[OK] 配置中没有代理配置，无需撤销：{path}")
-    except (OSError, UnicodeError) as error:
+    except (OSError, UnicodeError, ValueError) as error:
         print(f"[ERROR] 无法更新 Codex 配置：{error}", file=sys.stderr)
         return 1
 
