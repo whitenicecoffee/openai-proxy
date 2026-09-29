@@ -11,6 +11,12 @@ from pathlib import Path
 OPENAI_BASE_URL_RE = re.compile(
     r"(?m)^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
+SECTION_HEADER_RE = re.compile(
+    r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
+)
+OPENAI_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:\r?\n|$)"
+)
 MANAGED_SUPPORTS_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*\n"
     r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
@@ -32,6 +38,17 @@ def _restore_managed_transport(body: str) -> str:
     return MANAGED_SUPPORTS_RE.sub(restore, body)
 
 
+def _remove_empty_openai_provider(body: str) -> str:
+    provider = OPENAI_PROVIDER_RE.search(body)
+    if provider is None:
+        return body
+    next_section = SECTION_HEADER_RE.search(body, provider.end())
+    section_end = next_section.start() if next_section else len(body)
+    if not body[provider.end():section_end].strip():
+        return body[:provider.start()] + body[section_end:]
+    return body
+
+
 def main() -> int:
     path = config_path()
     if not path.exists():
@@ -43,6 +60,7 @@ def main() -> int:
         normalized = current.replace("\r\n", "\n").replace("\r", "\n")
         updated = OPENAI_BASE_URL_RE.sub("", normalized)
         updated = _restore_managed_transport(updated)
+        updated = _remove_empty_openai_provider(updated)
         if updated != normalized:
             newline = "\r\n" if os.name == "nt" else "\n"
             with tempfile.NamedTemporaryFile(
