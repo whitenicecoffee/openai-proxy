@@ -13,14 +13,14 @@ OPENAI_BASE_URL_RE = re.compile(
     r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
 )
 MANAGED_BASE_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
     r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
 MODEL_PROVIDER_RE = re.compile(
     r"(?m)^[ \t]*model_provider[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
 )
 MANAGED_MODEL_PROVIDER_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n)"
     r"^[ \t]*model_provider[ \t]*=.*(?:\r?\n|$)"
 )
 SECTION_HEADER_RE = re.compile(
@@ -30,7 +30,7 @@ OPENAI_PROVIDER_RE = re.compile(
     r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
 MANAGED_SUPPORTS_RE = re.compile(
-    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*\n"
+    r"(?m)^[ \t]*# bps-proxy: managed supports_websockets previous=(absent|true|false)[ \t]*(?:\r?\n)"
     r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
 )
 
