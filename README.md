@@ -46,7 +46,7 @@ Windows 用户只需运行一个启动入口；它会自动完成配置并启动
 1. 双击 `start.bat`。它会自动写入 Codex 配置，然后启动本地代理服务。
 2. 重启 Codex 并新建对话。
 
-配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置，同时在 `openai` provider 中关闭 WebSocket，让 Codex 直接使用 HTTP/SSE。这个设置带有可恢复标记。
+配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置，同时切换到内置 `openai` provider，并关闭它的 WebSocket，让 Codex 直接使用 HTTP/SSE。这些设置带有可恢复标记。
 
 需要恢复官方通道时，先停止代理，再运行：
 
@@ -78,6 +78,7 @@ start.bat
 先手动把下面一行放入 `$CODEX_HOME/config.toml`（未设置时为 `~/.codex/config.toml`），再启动服务：
 
 ```toml
+model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/v1"
 
 [model_providers.openai]
@@ -156,11 +157,11 @@ supports_websockets = false
 
 这使用 Codex 内置的 `openai` provider，不需要另建 provider。`supports_websockets = false` 用来跳过会反复失败的 WebSocket 预连接，改走代理已经支持的 HTTP/SSE；原有模型和推理档位设置可以保留。实际可用模型见下方目录。
 
-从旧配置迁移时，删除 `model_provider = "bps"` 和 `[model_providers.bps]` 段。如果设置了其他自定义 `model_provider`，也需删掉该选择或改为 `"openai"`。旧的自定义 provider 接法仍然兼容。
+`start.bat` 会自动把 `model_provider` 切到 `"openai"`，不会继续使用旧的 `bps` 或其他自定义 provider；撤销时恢复原值。手动配置时也请使用内置 `openai` provider。
 
 保存后重启 Codex 客户端并新建对话，使连接地址与模型目录重新加载。该地址应放在用户配置中，项目内的 `.codex/config.toml` 不适合配置连接地址。代理没启动时，Codex 会连不上。
 
-要回到官方通道，删掉 `openai_base_url` 和 `supports_websockets` 这两项（或运行 Windows 的 `A_close.bat`），再重启 Codex。
+要回到官方通道，删掉 `model_provider`、`openai_base_url` 和 `supports_websockets` 这三项（或运行 Windows 的 `A_close.bat`），再重启 Codex。
 
 ### 确认请求经过代理
 
