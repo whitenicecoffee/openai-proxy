@@ -42,6 +42,11 @@ MANAGED_PROVIDER_RE = re.compile(
 )
 
 
+NO_PROXY_LOWER_MARKER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed no_proxy previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
+)
+
+
 NO_PROXY_MARKER_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed NO_PROXY previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
 )
@@ -82,14 +87,55 @@ def _write_user_no_proxy(value: str) -> bool:
         return False
 
 
+def _dotenv_path() -> Path:
+    return config_path().parent / ".env"
+
+
+def _set_dotenv_value(body: str, name: str, value: str | None) -> str:
+    pattern = re.compile(
+        rf"(?m)^[ \t]*{re.escape(name)}[ \t]*=[ \t]*.*(?:\r?\n|$)"
+    )
+    if value is None:
+        return pattern.sub("", body)
+    line = f"{name}={value}\n"
+    if pattern.search(body):
+        return pattern.sub(line, body, count=1)
+    body = body.rstrip("\n")
+    return f"{body}\n{line}" if body else line
+
+
+def _restore_codex_dotenv(upper: str | None, lower: str | None) -> None:
+    path = _dotenv_path()
+    try:
+        current = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+    except (OSError, UnicodeError):
+        return
+    current = current.replace("\r\n", "\n").replace("\r", "\n")
+    updated = _set_dotenv_value(current, "NO_PROXY", upper)
+    updated = _set_dotenv_value(updated, "no_proxy", lower)
+    if updated.strip():
+        _write_config(path, updated)
+    elif path.exists():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 def _restore_local_proxy(body: str) -> tuple[str, bool]:
     marker = NO_PROXY_MARKER_RE.search(body)
-    if marker is None:
+    lower_marker = NO_PROXY_LOWER_MARKER_RE.search(body)
+    if marker is None and lower_marker is None:
         return body, False
-    previous = marker.group(1)
+    previous = marker.group(1) if marker is not None else "absent"
+    previous_lower = lower_marker.group(1) if lower_marker is not None else "absent"
     value = "" if previous == "absent" else _b64decode(previous)
+    lower_value = "" if previous_lower == "absent" else _b64decode(previous_lower)
     _write_user_no_proxy(value)
-    return NO_PROXY_MARKER_RE.sub("", body), True
+    _restore_codex_dotenv(value or None, lower_value or None)
+    body = NO_PROXY_MARKER_RE.sub("", body)
+    body = NO_PROXY_LOWER_MARKER_RE.sub("", body)
+    return body, True
 
 
 
