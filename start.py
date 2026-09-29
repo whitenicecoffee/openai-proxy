@@ -56,7 +56,7 @@ def _append_local_bypass(value: str) -> str:
     current = value.strip()
     if current == "*":
         return current
-    existing = {item.strip().lower() for item in current.split(",") if item.strip()}
+    existing = {item.strip().lower() for item in re.split(r"[;,]", current) if item.strip()}
     missing = [host for host in LOCAL_PROXY_BYPASS if host.lower() not in existing]
     if not missing:
         return current
