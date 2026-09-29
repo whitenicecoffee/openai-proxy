@@ -48,8 +48,62 @@ NO_PROXY_MARKER_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed NO_PROXY previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
 )
 MANAGED_NO_PROXY_MARKER = "# bps-proxy: managed NO_PROXY previous={previous}"
-LOCAL_PROXY_BYPASS = ("127.0.0.1", "localhost", "::1")
+NO_PROXY_LOWER_MARKER_RE = re.compile(\n    r"(?m)^[ \\t]*# bps-proxy: managed no_proxy previous=([A-Za-z0-9_-]+|absent)[ \\t]*(?:\\r?\\n|$)"\n)\nMANAGED_NO_PROXY_LOWER_MARKER = "# bps-proxy: managed no_proxy previous={previous}"\nLOCAL_PROXY_BYPASS = ("127.0.0.1", "localhost", "::1")
 LAST_NO_PROXY_PERSISTED = False
+
+
+def _dotenv_path() -> Path:
+    return config_path().parent / ".env"
+
+
+def _dotenv_value(body: str, name: str) -> str:
+    pattern = re.compile(
+        rf"(?m)^[ \t]*{re.escape(name)}[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
+    )
+    match = pattern.search(body)
+    if match is None:
+        return ""
+    return match.group("value").strip().strip("\"'")
+
+
+def _set_dotenv_value(body: str, name: str, value: str | None) -> str:
+    pattern = re.compile(
+        rf"(?m)^[ \t]*{re.escape(name)}[ \t]*=[ \t]*.*(?:\r?\n|$)"
+    )
+    if value is None:
+        return pattern.sub("", body)
+    line = f"{name}={value}\n"
+    if pattern.search(body):
+        return pattern.sub(line, body, count=1)
+    body = body.rstrip("\n")
+    return f"{body}\n{line}" if body else line
+
+
+def ensure_codex_dotenv_bypass(
+    previous_upper: str | None = None,
+    previous_lower: str | None = None,
+) -> tuple[str, str, bool]:
+    path = _dotenv_path()
+    try:
+        current = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+    except (OSError, UnicodeError):
+        current = ""
+    current = current.replace("\r\n", "\n").replace("\r", "\n")
+    upper = _dotenv_value(current, "NO_PROXY")
+    lower = _dotenv_value(current, "no_proxy")
+    if previous_upper is None:
+        previous_upper = _b64encode(upper) if upper else "absent"
+    if previous_lower is None:
+        previous_lower = _b64encode(lower) if lower else "absent"
+    seed = upper or lower or os.environ.get("NO_PROXY", "")
+    desired = _append_local_bypass(seed)
+    updated = _set_dotenv_value(current, "NO_PROXY", desired)
+    updated = _set_dotenv_value(updated, "no_proxy", desired)
+    if updated != current:
+        write_config(path, updated)
+    os.environ["NO_PROXY"] = desired
+    os.environ["no_proxy"] = desired
+    return previous_upper, previous_lower, True
 
 
 def _append_local_bypass(value: str) -> str:
@@ -232,11 +286,21 @@ def configure() -> Path:
         current, MANAGED_MODEL_PROVIDER_RE, MODEL_PROVIDER_RE
     )
     no_proxy_marker = NO_PROXY_MARKER_RE.search(current)
+    no_proxy_lower_marker = NO_PROXY_LOWER_MARKER_RE.search(current)
     previous_no_proxy = no_proxy_marker.group(1) if no_proxy_marker else None
-    previous_no_proxy, LAST_NO_PROXY_PERSISTED = ensure_local_proxy_bypass(previous_no_proxy)
+    previous_no_proxy_lower = (
+        no_proxy_lower_marker.group(1) if no_proxy_lower_marker else None
+    )
+    previous_no_proxy, _ = ensure_local_proxy_bypass(previous_no_proxy)
+    (
+        previous_no_proxy_lower,
+        _,
+        LAST_NO_PROXY_PERSISTED,
+    ) = ensure_codex_dotenv_bypass(previous_no_proxy, previous_no_proxy_lower)
 
     body = MANAGED_BASE_RE.sub("", current)
     body = NO_PROXY_MARKER_RE.sub("", body)
+    body = NO_PROXY_LOWER_MARKER_RE.sub("", body)
     body = BASE_LINE_RE.sub("", body)
     body = MANAGED_MODEL_PROVIDER_RE.sub("", body)
     body = MODEL_PROVIDER_RE.sub("", body)
@@ -267,6 +331,8 @@ def configure() -> Path:
         + "\n"
         + f'model_provider = "{PROXY_PROVIDER}"\n'
         + MANAGED_NO_PROXY_MARKER.format(previous=previous_no_proxy)
+        + "\n"
+        + MANAGED_NO_PROXY_LOWER_MARKER.format(previous=previous_no_proxy_lower)
         + "\n"
         + (
             MANAGED_BASE_MARKER.format(previous=previous_base) + "\n"
