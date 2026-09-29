@@ -79,6 +79,19 @@ def _read_user_no_proxy() -> str:
         return current
 
 
+def _broadcast_environment_change() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SendMessageTimeoutW(
+            0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, None
+        )
+    except (AttributeError, OSError):
+        pass
+
+
 def _write_user_no_proxy(value: str) -> bool:
     os.environ["NO_PROXY"] = value
     os.environ["no_proxy"] = value
@@ -89,6 +102,7 @@ def _write_user_no_proxy(value: str) -> bool:
 
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
             winreg.SetValueEx(key, "NO_PROXY", 0, winreg.REG_SZ, value)
+        _broadcast_environment_change()
         return True
     except (ImportError, OSError):
         return False
