@@ -48,7 +48,11 @@ NO_PROXY_MARKER_RE = re.compile(
     r"(?m)^[ \t]*# bps-proxy: managed NO_PROXY previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
 )
 MANAGED_NO_PROXY_MARKER = "# bps-proxy: managed NO_PROXY previous={previous}"
-NO_PROXY_LOWER_MARKER_RE = re.compile(\n    r"(?m)^[ \\t]*# bps-proxy: managed no_proxy previous=([A-Za-z0-9_-]+|absent)[ \\t]*(?:\\r?\\n|$)"\n)\nMANAGED_NO_PROXY_LOWER_MARKER = "# bps-proxy: managed no_proxy previous={previous}"\nLOCAL_PROXY_BYPASS = ("127.0.0.1", "localhost", "::1")
+NO_PROXY_LOWER_MARKER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed no_proxy previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
+)
+MANAGED_NO_PROXY_LOWER_MARKER = "# bps-proxy: managed no_proxy previous={previous}"
+LOCAL_PROXY_BYPASS = ("127.0.0.1", "localhost", "::1")
 LAST_NO_PROXY_PERSISTED = False
 
 
