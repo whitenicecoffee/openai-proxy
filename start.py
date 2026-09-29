@@ -44,6 +44,63 @@ MANAGED_PROVIDER_RE = re.compile(
 )
 MANAGED_PROVIDER_MARKER = "# bps-proxy: managed provider previous={previous}"
 
+NO_PROXY_MARKER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed NO_PROXY previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
+)
+MANAGED_NO_PROXY_MARKER = "# bps-proxy: managed NO_PROXY previous={previous}"
+LOCAL_PROXY_BYPASS = ("127.0.0.1", "localhost", "::1")
+
+
+def _append_local_bypass(value: str) -> str:
+    current = value.strip()
+    if current == "*":
+        return current
+    existing = {item.strip().lower() for item in current.split(",") if item.strip()}
+    missing = [host for host in LOCAL_PROXY_BYPASS if host.lower() not in existing]
+    if not missing:
+        return current
+    suffix = ",".join(missing)
+    return f"{current},{suffix}" if current else suffix
+
+
+def _read_user_no_proxy() -> str:
+    if os.name != "nt":
+        return os.environ.get("NO_PROXY", "")
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, "NO_PROXY")
+            return str(value or "")
+    except (ImportError, OSError, TypeError):
+        return os.environ.get("NO_PROXY", "")
+
+
+def _write_user_no_proxy(value: str) -> bool:
+    os.environ["NO_PROXY"] = value
+    os.environ["no_proxy"] = value
+    if os.name != "nt":
+        return False
+    try:
+        import winreg
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            winreg.SetValueEx(key, "NO_PROXY", 0, winreg.REG_SZ, value)
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+def ensure_local_proxy_bypass(previous: str | None = None) -> tuple[str, bool]:
+    current = _read_user_no_proxy()
+    if previous is None:
+        previous = _b64encode(current) if current else "absent"
+    desired = _append_local_bypass(current)
+    persisted = _write_user_no_proxy(desired)
+    return previous, persisted
+
+
+
 
 def config_path() -> Path:
     codex_home = os.environ.get("CODEX_HOME")
@@ -155,8 +212,12 @@ def configure() -> Path:
     previous_provider = _previous_line(
         current, MANAGED_MODEL_PROVIDER_RE, MODEL_PROVIDER_RE
     )
+    no_proxy_marker = NO_PROXY_MARKER_RE.search(current)
+    previous_no_proxy = no_proxy_marker.group(1) if no_proxy_marker else None
+    previous_no_proxy, no_proxy_persisted = ensure_local_proxy_bypass(previous_no_proxy)
 
     body = MANAGED_BASE_RE.sub("", current)
+    body = NO_PROXY_MARKER_RE.sub("", body)
     body = BASE_LINE_RE.sub("", body)
     body = MANAGED_MODEL_PROVIDER_RE.sub("", body)
     body = MODEL_PROVIDER_RE.sub("", body)
@@ -185,6 +246,8 @@ def configure() -> Path:
     updated = (
         MANAGED_MODEL_PROVIDER_MARKER.format(previous=previous_provider)
         + "\n"
+        + MANAGED_NO_PROXY_MARKER.format(previous=previous_no_proxy)
+        + "\n"
         + f'model_provider = "{PROXY_PROVIDER}"\n'
         + (
             MANAGED_BASE_MARKER.format(previous=previous_base) + "\n"
@@ -209,6 +272,9 @@ def main() -> int:
     print(f"[OK] model_provider = {PROXY_PROVIDER}")
     print(f"[OK] base_url = {PROXY_BASE_URL}")
     print("[OK] Codex WebSocket 已关闭，使用 HTTP/SSE。")
+    print("[OK] Codex 本机地址绕过系统代理：127.0.0.1, localhost, ::1")
+    if os.name == "nt":
+        print("[提示] 上游请求仍按 BPS_UPSTREAM_MODE 走系统代理；请在新终端启动 Codex 以读取 NO_PROXY。")
     print("正在启动 bps-proxy；按 Ctrl+C 停止。")
     from bps_proxy.__main__ import main as proxy_main
 
