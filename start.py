@@ -32,6 +32,14 @@ MANAGED_BASE_RE = re.compile(
     r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
 )
 MANAGED_BASE_MARKER = "# bps-proxy: managed openai_base_url previous={previous}"
+MODEL_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*model_provider[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
+)
+MANAGED_MODEL_PROVIDER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed model_provider previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"^[ \t]*model_provider[ \t]*=.*(?:\r?\n|$)"
+)
+MANAGED_MODEL_PROVIDER_MARKER = "# bps-proxy: managed model_provider previous={previous}"
 
 
 def config_path() -> Path:
@@ -113,11 +121,30 @@ def configure() -> Path:
             previous_base = encoded
         else:
             previous_base = "absent"
+
+    managed_provider = MANAGED_MODEL_PROVIDER_RE.search(current)
+    if managed_provider:
+        previous_provider = managed_provider.group(1)
+    else:
+        existing_provider = MODEL_PROVIDER_RE.search(current)
+        if existing_provider:
+            encoded = base64.urlsafe_b64encode(
+                existing_provider.group(0).rstrip("\r\n").encode("utf-8")
+            ).decode("ascii").rstrip("=")
+            previous_provider = encoded
+        else:
+            previous_provider = "absent"
+
     body = MANAGED_BASE_RE.sub("", current)
     body = OPENAI_BASE_URL_RE.sub("", body)
+    body = MANAGED_MODEL_PROVIDER_RE.sub("", body)
+    body = MODEL_PROVIDER_RE.sub("", body)
     body = _provider_transport_config(body)
     updated = (
-        MANAGED_BASE_MARKER.format(previous=previous_base)
+        MANAGED_MODEL_PROVIDER_MARKER.format(previous=previous_provider)
+        + "\n"
+        + 'model_provider = "openai"\n'
+        + MANAGED_BASE_MARKER.format(previous=previous_base)
         + "\n"
         + f'openai_base_url = "{PROXY_BASE_URL}"\n'
         + body.lstrip("\r\n")
@@ -135,6 +162,7 @@ def main() -> int:
 
     print(f"[OK] 已完成代理配置：{path}")
     print(f"[OK] openai_base_url = {PROXY_BASE_URL}")
+    print("[OK] model_provider = openai")
     print("[OK] Codex WebSocket 已关闭，使用 HTTP/SSE。")
     print("正在启动 bps-proxy；按 Ctrl+C 停止。")
     from bps_proxy.__main__ import main as proxy_main
