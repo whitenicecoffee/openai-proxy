@@ -242,9 +242,18 @@ def iter_events(session: ChatGPTSession, body: dict, *, max_event_bytes: int | N
             raise UpstreamError(504, "upstream request timed out") from exc
         except (error.URLError, OSError) as exc:
             reason = getattr(exc, "reason", None)
-            log.warning("upstream connection failed stage=open exception_type=%s reason_type=%s",
-                        type(exc).__name__, type(reason).__name__ if reason is not None else "none")
-            raise UpstreamError(502, f"could not reach upstream via {network_description()}") from exc
+            reason_type = type(reason).__name__ if reason is not None else type(exc).__name__
+            log.warning(
+                "upstream connection failed stage=open route=%s exception_type=%s reason_type=%s",
+                network_description(),
+                type(exc).__name__,
+                reason_type,
+            )
+            raise UpstreamError(
+                502,
+                f"could not reach upstream via {network_description()} "
+                f"(reason={reason_type})",
+            ) from exc
 
         if "text/event-stream" not in _content_type(response):
             raise UpstreamError(502, "upstream did not return an event stream")
