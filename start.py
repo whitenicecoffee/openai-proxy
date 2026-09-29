@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import sys
@@ -10,7 +11,7 @@ from pathlib import Path
 
 PROXY_BASE_URL = "http://127.0.0.1:8787/v1"
 OPENAI_BASE_URL_RE = re.compile(
-    r"(?m)^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
+    r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
 )
 SECTION_HEADER_RE = re.compile(
     r"(?m)^[ \t]*\[[^]\r\n]+\][ \t]*(?:#.*)?(?:\r?\n|$)"
@@ -26,6 +27,11 @@ MANAGED_SUPPORTS_RE = re.compile(
     r"^[ \t]*supports_websockets[ \t]*=[ \t]*false[ \t]*(?:#.*)?(?:\r?\n|$)"
 )
 MANAGED_MARKER = "# bps-proxy: managed supports_websockets previous={previous}"
+MANAGED_BASE_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed openai_base_url previous=([A-Za-z0-9_-]+|absent)[ \t]*\n"
+    r"^[ \t]*openai_base_url[ \t]*=.*(?:\r?\n|$)"
+)
+MANAGED_BASE_MARKER = "# bps-proxy: managed openai_base_url previous={previous}"
 
 
 def config_path() -> Path:
@@ -95,9 +101,26 @@ def _provider_transport_config(body: str) -> str:
 def configure() -> Path:
     path = config_path()
     current = read_config(path)
+    managed_base = MANAGED_BASE_RE.search(current)
+    if managed_base:
+        previous_base = managed_base.group(1)
+    else:
+        existing_base = OPENAI_BASE_URL_RE.search(current)
+        if existing_base:
+            encoded = base64.urlsafe_b64encode(
+                existing_base.group(0).rstrip("\r\n").encode("utf-8")
+            ).decode("ascii").rstrip("=")
+            previous_base = encoded
+        else:
+            previous_base = "absent"
     body = OPENAI_BASE_URL_RE.sub("", current)
     body = _provider_transport_config(body)
-    updated = f'openai_base_url = "{PROXY_BASE_URL}"\n' + body.lstrip("\r\n")
+    updated = (
+        MANAGED_BASE_MARKER.format(previous=previous_base)
+        + "\n"
+        + f'openai_base_url = "{PROXY_BASE_URL}"\n'
+        + body.lstrip("\r\n")
+    )
     write_config(path, updated)
     return path
 
