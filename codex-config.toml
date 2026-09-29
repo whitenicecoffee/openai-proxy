@@ -6,3 +6,6 @@
 # Restart Codex and create a new conversation after changing it.
 
 openai_base_url = "http://127.0.0.1:8787/v1"
+
+[model_providers.openai]
+supports_websockets = false
