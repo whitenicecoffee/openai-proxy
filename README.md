@@ -39,7 +39,7 @@ Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` �
 
 ## 启动
 
-启动分为“配置 Codex”和“启动代理”两步。配置只需执行一次，撤销时再执行撤销脚本。
+Windows 用户只需运行一个启动入口；它会自动完成配置并启动代理。撤销时再运行撤销脚本。
 
 ### Windows 推荐流程
 
@@ -54,7 +54,7 @@ Windows 上使用 `python` 代替 `python3`，通过 `.venv\Scripts\activate` �
 A_close.bat
 ```
 
-撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。`start.bat` 只负责启动代理，`start.bat` 和 `A_close.bat` 负责配置切换。
+撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
 
 Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=direct`。这不会绕过 TUN；Python 只是不再读取 `HTTP_PROXY/HTTPS_PROXY`，实际连接仍由系统 TUN 和你的全局链式规则转发。启动窗口会显示实际网络模式。
 
