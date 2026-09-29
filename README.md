@@ -22,7 +22,7 @@
 ## 安装
 
 ```bash
-git clone https://github.com/kokojacket/openai-proxy.git
+git clone https://github.com/whitenicecoffee/openai-proxy.git
 cd openai-proxy
 ```
 
