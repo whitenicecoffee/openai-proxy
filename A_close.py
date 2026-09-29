@@ -42,6 +42,43 @@ MANAGED_PROVIDER_RE = re.compile(
 )
 
 
+NO_PROXY_MARKER_RE = re.compile(
+    r"(?m)^[ \t]*# bps-proxy: managed NO_PROXY previous=([A-Za-z0-9_-]+|absent)[ \t]*(?:\r?\n|$)"
+)
+
+
+def _write_user_no_proxy(value: str) -> bool:
+    os.environ["NO_PROXY"] = value
+    os.environ["no_proxy"] = value
+    if os.name != "nt":
+        return False
+    try:
+        import winreg
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            if value:
+                winreg.SetValueEx(key, "NO_PROXY", 0, winreg.REG_SZ, value)
+            else:
+                try:
+                    winreg.DeleteValue(key, "NO_PROXY")
+                except FileNotFoundError:
+                    pass
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+def _restore_local_proxy(body: str) -> tuple[str, bool]:
+    marker = NO_PROXY_MARKER_RE.search(body)
+    if marker is None:
+        return body, False
+    previous = marker.group(1)
+    value = "" if previous == "absent" else _b64decode(previous)
+    _write_user_no_proxy(value)
+    return NO_PROXY_MARKER_RE.sub("", body), True
+
+
+
 def config_path() -> Path:
     codex_home = os.environ.get("CODEX_HOME")
     if codex_home:
@@ -149,6 +186,7 @@ def main() -> int:
             remove_unmanaged=False,
         )
         updated = _restore_line(updated, MANAGED_BASE_RE, BASE_LINE_RE)
+        updated, no_proxy_restored = _restore_local_proxy(updated)
         # A manually copied openai-proxy setting should also be removed.
         updated = PROXY_MODEL_PROVIDER_RE.sub("", updated)
         updated = updated.strip("\n")
@@ -162,6 +200,8 @@ def main() -> int:
         print(f"[ERROR] 无法更新 Codex 配置：{error}", file=sys.stderr)
         return 1
 
+    if no_proxy_restored:
+        print("[OK] 已恢复 Codex 的 NO_PROXY 设置。")
     print("如需恢复官方通道，请重启 Codex 并新建对话。")
     return 0
 
