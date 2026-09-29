@@ -44,7 +44,9 @@ Windows 用户只需运行一个启动入口；它会自动完成配置并启动
 ### Windows 推荐流程
 
 1. 双击 `start.bat`。它会自动写入 Codex 配置，然后启动本地代理服务。
-2. 重启 Codex 并新建对话。
+2. 关闭已有的 Codex 终端，在新终端启动 Codex 并新建对话。
+
+网络链路固定为：`Codex -> http://127.0.0.1:8787`，再由本地代理访问上游。Codex 不会改为访问 `127.0.0.1:7897`；`7897` 只用于本地代理的上游出口。启动脚本会把 `127.0.0.1`、`localhost` 和 `::1` 加入 Windows 用户的 `NO_PROXY`，避免系统代理把本机请求错误地转发到 `7897`。这不会改变外部上游的系统代理链路。修改环境变量后要在新终端启动 Codex，已有终端不会自动读取新的用户环境变量。
 
 配置文件的位置是 `%CODEX_HOME%\config.toml`；未设置 `CODEX_HOME` 时使用 `%USERPROFILE%\.codex\config.toml`。启动脚本会自动去重并保留其他配置，选择项目自己的 `openai-proxy` provider，并关闭该 provider 的 WebSocket，让 Codex 直接使用 HTTP/SSE。这些设置带有可恢复标记。内置 `openai` 是 Codex 保留的 provider ID，不能在 `model_providers` 中覆盖。如果之前版本产生了 `reserved built-in provider IDs: openai`，更新仓库后重新运行 `start.bat`，脚本会自动删除旧的非法表并迁移到 `openai-proxy`。
 
@@ -56,7 +58,7 @@ A_close.bat
 
 撤销脚本会移除代理地址和启动脚本写入的 WebSocket 设置，并恢复它们原来的值，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
 
-Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，直接使用系统/环境代理，保留你的全局链式代理规则。启动窗口会显示实际网络模式。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若希望先走 TUN、失败后再走系统代理，可设置 `set BPS_UPSTREAM_MODE=auto`。
+Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=system`，优先使用系统/环境代理；如果上游代理返回 502/503/504 或连接失败，会自动回退到系统/TUN 直连路径。这样保留你的全局链式代理规则，同时兼容代理链临时返回网关错误的情况。启动窗口会显示实际网络模式。若你明确只想走 TUN，可设置 `set BPS_UPSTREAM_MODE=direct`；若希望先走 TUN、失败后再走系统代理，可设置 `set BPS_UPSTREAM_MODE=auto`。
 
 如果你的链式代理只提供本地 HTTP 代理，而没有让 Python 直连流量进入 TUN，可以这样启动：
 
