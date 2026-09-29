@@ -1,7 +1,7 @@
 """Choose how the proxy reaches the remote BPS service.
 
 In TUN mode, sockets should be opened directly so the system TUN policy owns
-the route. An explicit HTTP/SOCKS environment proxy can still be selected when
+the route. An explicit HTTP environment proxy can still be selected when
 the machine does not use TUN.
 """
 
