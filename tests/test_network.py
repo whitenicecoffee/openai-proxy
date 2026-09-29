@@ -59,5 +59,15 @@ class NetworkRouteTest(unittest.TestCase):
         self.assertIn("https=http://127.0.0.1:7897", value)
 
 
+    def test_windows_registry_proxy_is_used_when_environment_has_only_no_proxy(self):
+        with patch.object(network.request, "getproxies", return_value={"no": "localhost"}), \
+             patch.object(network, "_windows_registry_proxies", return_value={
+                 "http": "http://127.0.0.1:7897",
+                 "https": "http://127.0.0.1:7897",
+             }):
+            opener = network._system_opener()
+        self.assertIsInstance(opener, network._ConfiguredSystemOpener)
+
+
 if __name__ == "__main__":
     unittest.main()
