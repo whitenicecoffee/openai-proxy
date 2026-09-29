@@ -54,7 +54,7 @@ Windows 用户只需运行一个启动入口；它会自动完成配置并启动
 A_close.bat
 ```
 
-撤销脚本只移除 `openai_base_url`，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
+撤销脚本会移除代理地址和启动脚本写入的 WebSocket 设置，并恢复它们原来的值，不会覆盖配置文件中的其他设置。`start.bat` 负责配置并启动代理，`A_close.bat` 负责撤销配置。
 
 Windows 的 `start.bat` 默认使用 `BPS_UPSTREAM_MODE=direct`。这不会绕过 TUN；Python 只是不再读取 `HTTP_PROXY/HTTPS_PROXY`，实际连接仍由系统 TUN 和你的全局链式规则转发。启动窗口会显示实际网络模式。
 
@@ -79,6 +79,9 @@ start.bat
 
 ```toml
 openai_base_url = "http://127.0.0.1:8787/v1"
+
+[model_providers.openai]
+supports_websockets = false
 ```
 
 启动代理：
@@ -148,7 +151,7 @@ curl http://127.0.0.1:8787/health
 openai_base_url = "http://127.0.0.1:8787/v1"
 ```
 
-这使用 Codex 内置的 `openai` provider，不需要另建 provider。原有模型和推理档位设置可以保留；实际可用模型见下方目录。
+这使用 Codex 内置的 `openai` provider，不需要另建 provider。`supports_websockets = false` 用来跳过会反复失败的 WebSocket 预连接，改走代理已经支持的 HTTP/SSE；原有模型和推理档位设置可以保留。实际可用模型见下方目录。
 
 从旧配置迁移时，删除 `model_provider = "bps"` 和 `[model_providers.bps]` 段。如果设置了其他自定义 `model_provider`，也需删掉该选择或改为 `"openai"`。旧的自定义 provider 接法仍然兼容。
 
