@@ -1,20 +1,23 @@
 """Choose how the proxy reaches the remote BPS service.
 
-In TUN mode, sockets should be opened directly so the system TUN policy owns
-the route. An explicit HTTP environment proxy can still be selected when
-the machine does not use TUN.
+Auto mode is the Windows-safe default: try a direct socket first so a TUN
+owns the route, then retry through the environment proxy when the direct
+connection cannot be opened. Explicit modes remain available for machines
+that need one fixed route.
 """
 
 from __future__ import annotations
 
+import logging
 import os
-from urllib import request
+from urllib import error, request
 
-MODES = frozenset({"system", "direct", "proxy"})
+MODES = frozenset({"auto", "system", "direct", "proxy"})
+log = logging.getLogger("bps_proxy")
 
 
 def mode() -> str:
-    default = "direct" if os.name == "nt" else "system"
+    default = "auto" if os.name == "nt" else "system"
     value = os.environ.get("BPS_UPSTREAM_MODE", default).strip().lower()
     if value not in MODES:
         raise ValueError(
@@ -25,6 +28,8 @@ def mode() -> str:
 
 def description() -> str:
     selected = mode()
+    if selected == "auto":
+        return "auto (direct/TUN first, system proxy fallback)"
     if selected == "direct":
         return "direct (system/TUN routing)"
     if selected == "proxy":
@@ -33,21 +38,47 @@ def description() -> str:
     return "system (urllib environment proxies)"
 
 
+def _direct_opener():
+    return request.build_opener(request.ProxyHandler({}))
+
+
+def _system_opener():
+    return request.build_opener()
+
+
+def _proxy_opener(proxy: str):
+    return request.build_opener(
+        request.ProxyHandler({"http": proxy, "https": proxy})
+    )
+
+
 def open_url(req, *, timeout: float):
     selected = mode()
     if selected == "system":
-        return request.urlopen(req, timeout=timeout)
+        return _system_opener().open(req, timeout=timeout)
     if selected == "direct":
-        opener = request.build_opener(request.ProxyHandler({}))
-        return opener.open(req, timeout=timeout)
+        return _direct_opener().open(req, timeout=timeout)
+    if selected == "proxy":
+        proxy = os.environ.get("BPS_UPSTREAM_PROXY", "").strip()
+        if not proxy:
+            raise OSError(
+                "BPS_UPSTREAM_MODE=proxy requires BPS_UPSTREAM_PROXY, "
+                "for example http://127.0.0.1:7890"
+            )
+        return _proxy_opener(proxy).open(req, timeout=timeout)
 
-    proxy = os.environ.get("BPS_UPSTREAM_PROXY", "").strip()
-    if not proxy:
-        raise OSError(
-            "BPS_UPSTREAM_MODE=proxy requires BPS_UPSTREAM_PROXY, "
-            "for example http://127.0.0.1:7890"
+    # Auto mode preserves TUN routing whenever it works. Only failures while
+    # opening the direct connection are retried; HTTP responses are never
+    # duplicated through a second route.
+    try:
+        return _direct_opener().open(req, timeout=timeout)
+    except error.HTTPError:
+        raise
+    except (error.URLError, OSError) as direct_error:
+        log.warning(
+            "direct upstream route failed; trying system proxy "
+            "exception_type=%s reason_type=%s",
+            type(direct_error).__name__,
+            type(getattr(direct_error, "reason", None)).__name__,
         )
-    opener = request.build_opener(
-        request.ProxyHandler({"http": proxy, "https": proxy})
-    )
-    return opener.open(req, timeout=timeout)
+        return _system_opener().open(req, timeout=timeout)
