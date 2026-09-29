@@ -165,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {'object': 'list', 'data': models, 'models': models})
         elif path in ('/v1/responses', '/responses') and self.headers.get('Upgrade', '').lower() == 'websocket':
             # Codex falls back to HTTP/SSE on an explicit unsupported upgrade.
-            self._error(426, '此连接使用 HTTP POST /responses 和 SSE')
+            self._error(426, '此连接使用 HTTP POST /responses 和 SSE', headers={'Upgrade': 'websocket'})
         else:
             self._error(404, 'not found')
 
