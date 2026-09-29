@@ -19,7 +19,7 @@ PROVIDER_RE = re.compile(
     rf"(?m)^[ \t]*\[model_providers\.{re.escape(PROXY_PROVIDER)}\][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
 LEGACY_OPENAI_PROVIDER_RE = re.compile(
-    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:#.*)?(?:\r?\n|$)"
+    r"(?m)^[ \t]*\[model_providers\.openai\][ \t]*(?:#.*)?(?:\r?\n|$)"
 )
 BASE_LINE_RE = re.compile(
     r"(?m)^[ \t]*openai_base_url[ \t]*=[ \t]*(?P<value>.*?)(?:\r?\n|$)"
