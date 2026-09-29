@@ -366,7 +366,7 @@ def main() -> int:
         if not LAST_NO_PROXY_PERSISTED:
             print("[WARN] 无法写入 Windows 用户 NO_PROXY；请在启动 Codex 前手动设置 NO_PROXY=127.0.0.1,localhost,::1。")
         else:
-            print("[提示] 上游请求仍按 BPS_UPSTREAM_MODE 走系统代理；请在新终端启动 Codex 以读取 NO_PROXY。")
+            print(f"[提示] 上游请求仍按 BPS_UPSTREAM_MODE 走系统代理；请完全退出并重启 Codex 以读取 {_dotenv_path()}。")
     print("正在启动 bps-proxy；按 Ctrl+C 停止。")
     from bps_proxy.__main__ import main as proxy_main
 
