@@ -64,9 +64,7 @@ def main() -> None:
                 f"代理已准备监听 http://{address}:{args.port}/v1",
                 f"默认模型 {DEFAULT_MODEL}。effort 的 max 会映射成 xhigh。",
                 f"上游网络模式：{network_description()}。",
-                "在 ~/.codex/config.toml 里加上：",
-                "",
-                f'openai_base_url = "http://{address}:{args.port}/v1"',
+                "Codex 配置已由 start.bat 写入 openai-proxy；手动配置请使用项目 README 中的 model_providers.openai-proxy。",
                 "",
             ]
         ),
