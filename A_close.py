@@ -90,7 +90,7 @@ def _restore_provider(body: str) -> str:
         previous = managed.group(1)
         if previous != "absent":
             restored = _b64decode(previous).rstrip("\r\n")
-            updated = restored + "\n" + updated.lstrip("\r\n")
+            updated = updated.rstrip("\r\n") + "\n\n" + restored
         return updated
 
     # Also clean a manually copied block from the old release.
